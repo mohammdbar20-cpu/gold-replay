@@ -1,7 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const TFS = { M5: 300, M15: 900, H1: 3600, H4: 14400, D1: 86400 };
-const WIN = 1500, OZ = 100;
+const WIN = 500, OZ = 100;
 let MAN, cache = {}, S, B = null, busy = false, playT = null, mode = "none", drag = null, pend = null;
 const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const offM = {};
@@ -34,11 +34,21 @@ function dec(txt) {
   }
   return { t: T, o: O, h: H, l: Lo, c: C, n };
 }
+const LRU = [];
 async function load(path) {
-  if (!cache[path]) cache[path] = fetch("data/" + path).then((r) => {
-    if (!r.ok) throw Error(path);
-    return r.text();
-  }).then(dec);
+  if (!cache[path]) {
+    LRU.push(path);
+    while (LRU.length > 10) {
+      delete cache[LRU.shift()];
+    }
+    cache[path] = fetch("data/" + path).then((r) => {
+      if (!r.ok) throw Error(path);
+      return r.text();
+    }).then(dec);
+    cache[path].catch(() => {
+      delete cache[path];
+    });
+  }
   return cache[path];
 }
 function cat(arr) {
@@ -77,21 +87,33 @@ const nextYm = (s) => {
   return y + "-" + String(m).padStart(2, "0");
 };
 async function m1(a, b) {
+  if (!isFinite(a) || !isFinite(b)) return { n: 0, t: [], o: [], h: [], l: [], c: [] };
   const ms = [];
   let k = ym(a);
   const e = ym(b);
-  while (k <= e) {
+  let g = 0;
+  while (k <= e && g++ < 240) {
     if (MAN.m1.includes(k)) ms.push(k);
     k = nextYm(k);
   }
   return cat(await Promise.all(ms.map((m) => load("m1/" + m + ".csv"))));
 }
 async function tfBars(tf, t) {
-  if (tf === "M5" || tf === "M15") {
-    const y = new Date(t * 1e3).getUTCFullYear(), ys = MAN.tf[tf].years.filter((v) => v >= y - 1 && v <= y + 1);
-    const key = tf + ys.join();
-    if (!cache[key]) cache[key] = Promise.all(ys.map((v) => load(tf + "/" + v + ".csv"))).then(cat);
-    return cache[key];
+  if (MAN.tf[tf].months) {
+    const back = tf === "H1" ? 2 : 1;
+    let k = ym(t);
+    const ks = [];
+    for (let i = 0; i < back; i++) k = prevYm(k);
+    for (let i = 0; i < back + 2; i++) {
+      if (MAN.tf[tf].months.includes(k)) ks.push(k);
+      k = nextYm(k);
+    }
+    const key = "w:" + tf + ks.join();
+    if (cache.__wk !== key) {
+      cache.__wk = key;
+      cache.__w = Promise.all(ks.map((v) => load(tf + "m/" + v + ".csv"))).then(cat);
+    }
+    return cache.__w;
   }
   return load(tf + ".csv");
 }
@@ -107,8 +129,12 @@ const bs = (A, v, n) => {
   return r;
 };
 async function lastM1Before(T) {
-  const M = await m1(T - 40 * 86400, T);
-  const i = bs(M.t, T - 1, M.n);
+  let M = await m1(T - 4 * 86400, T);
+  let i = bs(M.t, T - 1, M.n);
+  if (i < 0) {
+    M = await m1(T - 40 * 86400, T);
+    i = bs(M.t, T - 1, M.n);
+  }
   return i < 0 ? null : M.t[i];
 }
 const LS = (k) => {
@@ -119,6 +145,7 @@ const LS = (k) => {
   }
 };
 function save() {
+  dirty++;
   localStorage.setItem("gr_session", JSON.stringify(S));
 }
 function journal() {
@@ -171,7 +198,8 @@ async function render() {
   ser.setData(data);
   B = { U, O, H, L, C, n: U.length, nDone, tfs: TFS[tf], A, k };
   S.price = C[C.length - 1];
-  B.smc = computeSMC(B);
+  B.smc = S.smc.on ? computeSMC(B) : null;
+  dirty++;
   $("clock").textContent = ds(cur) + " \u0628\u0631\u0644\u064A\u0646";
   $("price").textContent = S.price.toFixed(2);
   updLines();
@@ -445,8 +473,13 @@ function handles(d) {
   }
   return h;
 }
+let dirty = 1, lastKey = "";
 function draw() {
+  if (document.hidden) return setTimeout(() => requestAnimationFrame(draw), 500);
   const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  const key = B ? [w, h, dirty, XI(0), XI(B.n - 1), Y(S.price), Y(S.price * 1.01), mode, S.draw.length, JSON.stringify(pend), drag ? JSON.stringify(S.draw) : ""].join("|") : "x" + dirty;
+  if (key === lastKey) return requestAnimationFrame(draw);
+  lastKey = key;
   if (cv.width !== w * dpr || cv.height !== h * dpr) {
     cv.width = w * dpr;
     cv.height = h * dpr;
@@ -749,11 +782,18 @@ async function init() {
   MAN = await (await fetch("data/manifest.json")).json();
   $("range").textContent = ds(Date.parse(MAN.first) / 1e3) + " \u2192 " + ds(Date.parse(MAN.last) / 1e3);
   S = LS("gr_session") || {};
-  S.tf = S.tf || "M15";
+  S.tf = S.tf || "H1";
   S.draw = S.draw || [];
   S.startBal = (_a = S.startBal) != null ? _a : 1e3;
   S.balance = (_b = S.balance) != null ? _b : S.startBal;
-  S.smc = Object.assign({ on: true, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
+  if (S.v !== 3) {
+    S.v = 3;
+    S.tf = "H1";
+    S.smc = Object.assign({}, S.smc || {}, { on: false });
+  }
+  if (!isFinite(S.cur)) delete S.cur;
+  if (!TFS[S.tf]) S.tf = "H1";
+  S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
   $("startBal").value = S.startBal;
   for (const k in S.smc) {
@@ -763,7 +803,8 @@ async function init() {
       el.onchange = () => {
         S.smc[k] = el.checked;
         save();
-        B.smc = computeSMC(B);
+        if (B) B.smc = S.smc.on ? computeSMC(B) : null;
+        dirty++;
       };
     }
   }
@@ -877,6 +918,7 @@ init().catch((e) => {
   status("\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u062A\u062D\u0645\u064A\u0644");
 });
 function snapCtx() {
+  if (B && !B.smc) B.smc = computeSMC(B);
   if (!B || !B.smc || !B.smc.raw) return { tf: S.tf };
   const sm = B.smc, { I, Sw } = sm.raw, px = S.price, r2 = (v) => +v.toFixed(2);
   const tr = (t) => t === 1 ? "up" : t === -1 ? "down" : "none", last = (a) => a.length ? ((l) => ({ type: l.t, dir: l.bull ? "bull" : "bear", level: r2(l.p), time: ds(B.U[l.i2]) }))(a[a.length - 1]) : null;

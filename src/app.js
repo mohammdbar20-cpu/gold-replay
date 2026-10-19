@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const TFS={M5:300,M15:900,H1:3600,H4:14400,D1:86400};
-const WIN=1500, OZ=100;
+const WIN=500, OZ=100;
 let MAN, cache={}, S, B=null, busy=false, playT=null, mode='none', drag=null, pend=null;
 // ---------- time ----------
 const fmt=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Berlin',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -16,24 +16,28 @@ function dec(txt){const L=txt.split('\n');let n=L.length-1;if(L[n]==='')n--;
  const T=new Float64Array(n),O=new Float64Array(n),H=new Float64Array(n),Lo=new Float64Array(n),C=new Float64Array(n);
  for(let i=0;i<n;i++){const r=L[i+1].split(',');t+=+r[0];const o=pc+ +r[1];T[i]=t*60;O[i]=o/100;H[i]=(o+ +r[2])/100;Lo[i]=(o-r[3])/100;const c=o+ +r[4];C[i]=c/100;pc=c;}
  return {t:T,o:O,h:H,l:Lo,c:C,n};}
-async function load(path){if(!cache[path])cache[path]=fetch('data/'+path).then(r=>{if(!r.ok)throw Error(path);return r.text()}).then(dec);return cache[path];}
+const LRU=[];
+async function load(path){if(!cache[path]){LRU.push(path);while(LRU.length>10){delete cache[LRU.shift()]}cache[path]=fetch('data/'+path).then(r=>{if(!r.ok)throw Error(path);return r.text()}).then(dec);cache[path].catch(()=>{delete cache[path]})}return cache[path];}
 function cat(arr){arr=arr.filter(Boolean);const n=arr.reduce((a,b)=>a+b.n,0),R={n};
  for(const k of 'tohlc'){R[k]=new Float64Array(n);let p=0;for(const a of arr){R[k].set(a[k],p);p+=a.n}}return R;}
 const ym=t=>{const d=new Date(t*1000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')};
 const prevYm=s=>{let[y,m]=s.split('-').map(Number);m--;if(!m){m=12;y--}return y+'-'+String(m).padStart(2,'0')};
 const nextYm=s=>{let[y,m]=s.split('-').map(Number);m++;if(m>12){m=1;y++}return y+'-'+String(m).padStart(2,'0')};
 async function m1(a,b){ // M1 bars covering [a,b]
- const ms=[];let k=ym(a);const e=ym(b);while(k<=e){if(MAN.m1.includes(k))ms.push(k);k=nextYm(k)}
+ if(!isFinite(a)||!isFinite(b))return {n:0,t:[],o:[],h:[],l:[],c:[]};
+ const ms=[];let k=ym(a);const e=ym(b);let g=0;while(k<=e&&g++<240){if(MAN.m1.includes(k))ms.push(k);k=nextYm(k)}
  return cat(await Promise.all(ms.map(m=>load('m1/'+m+'.csv'))));}
 async function tfBars(tf,t){
- if(tf==='M5'||tf==='M15'){const y=new Date(t*1000).getUTCFullYear(),ys=MAN.tf[tf].years.filter(v=>v>=y-1&&v<=y+1);
-  const key=tf+ys.join();if(!cache[key])cache[key]=Promise.all(ys.map(v=>load(tf+'/'+v+'.csv'))).then(cat);return cache[key];}
+ if(MAN.tf[tf].months){ // monthly files: only the months around the cursor
+  const back=tf==='H1'?2:1;let k=ym(t);const ks=[];for(let i=0;i<back;i++)k=prevYm(k);
+  for(let i=0;i<back+2;i++){if(MAN.tf[tf].months.includes(k))ks.push(k);k=nextYm(k)}
+  const key='w:'+tf+ks.join();if(cache.__wk!==key){cache.__wk=key;cache.__w=Promise.all(ks.map(v=>load(tf+'m/'+v+'.csv'))).then(cat)}return cache.__w;}
  return load(tf+'.csv');}
 const bs=(A,v,n)=>{let lo=0,hi=n-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(A[m]<=v){r=m;lo=m+1}else hi=m-1}return r};// last idx <=v
-async function lastM1Before(T){const M=await m1(T-40*86400,T);const i=bs(M.t,T-1,M.n);return i<0?null:M.t[i];}
+async function lastM1Before(T){let M=await m1(T-4*86400,T);let i=bs(M.t,T-1,M.n);if(i<0){M=await m1(T-40*86400,T);i=bs(M.t,T-1,M.n)}return i<0?null:M.t[i];}
 // ---------- state ----------
 const LS=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}};
-function save(){localStorage.setItem('gr_session',JSON.stringify(S));}
+function save(){dirty++;localStorage.setItem('gr_session',JSON.stringify(S));}
 function journal(){return LS('gr_journal')||[]}
 function setJournal(j){localStorage.setItem('gr_journal',JSON.stringify(j));}
 // ---------- chart ----------
@@ -55,7 +59,7 @@ async function render(){
  ser.setData(data);
  B={U,O,H,L,C,n:U.length,nDone,tfs:TFS[tf],A,k};
  S.price=C[C.length-1];
- B.smc=computeSMC(B);
+ B.smc=S.smc.on?computeSMC(B):null;dirty++;
  $('clock').textContent=ds(cur)+' برلين';$('price').textContent=S.price.toFixed(2);
  updLines();updPos();
 }
@@ -137,7 +141,10 @@ function segs(d){if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}
  if(d.type==='chan')s.push([{t:d.a.t,p:d.a.p+d.off},{t:d.b.t,p:d.b.p+d.off}]);return s;}
 function handles(d){if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
  if(d.type==='chan'){const m=(d.a.t+d.b.t)/2;h.push(['c',m,lineP(d.a,d.b,m)+d.off])}return h;}
-function draw(){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+let dirty=1,lastKey='';
+function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(draw),500);const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+ const key=B?[w,h,dirty,XI(0),XI(B.n-1),Y(S.price),Y(S.price*1.01),mode,S.draw.length,JSON.stringify(pend),drag?JSON.stringify(S.draw):''].join('|'):'x'+dirty;
+ if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;
  if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr}
  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);if(!B)return requestAnimationFrame(draw);
  const pw=w-60;cx.save();cx.beginPath();cx.rect(0,0,pw,h);cx.clip();
@@ -208,10 +215,12 @@ function randStart(){const last=Date.parse(MAN.last)/1000,first=last-3*365*86400
 async function init(){
  MAN=await (await fetch('data/manifest.json')).json();
  $('range').textContent=ds(Date.parse(MAN.first)/1000)+' → '+ds(Date.parse(MAN.last)/1000);
- S=LS('gr_session')||{};S.tf=S.tf||'M15';S.draw=S.draw||[];S.startBal=S.startBal??1000;S.balance=S.balance??S.startBal;
- S.smc=Object.assign({on:true,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
+ S=LS('gr_session')||{};S.tf=S.tf||'H1';S.draw=S.draw||[];S.startBal=S.startBal??1000;S.balance=S.balance??S.startBal;
+ if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
+ if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf])S.tf='H1';
+ S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
  $('tf').value=S.tf;$('startBal').value=S.startBal;
- for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();B.smc=computeSMC(B)}}}
+ for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
  renderJournal();requestAnimationFrame(draw);ts.scrollToRealTime();}
@@ -238,7 +247,7 @@ $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await
 window.GR={snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
-function snapCtx(){if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
+function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
  const tr=t=>t===1?'up':t===-1?'down':'none',last=a=>a.length?(l=>({type:l.t,dir:l.bull?'bull':'bear',level:r2(l.p),time:ds(B.U[l.i2])}))(a[a.length-1]):null;
  const near=a=>{let b=null;for(const o of a){const d=px>o.top?px-o.top:px<o.bot?o.bot-px:0;if(!b||d<b.dist)b={dir:o.bull?'bull':'bear',top:r2(o.top),bot:r2(o.bot),dist:r2(d),inside:d===0}}return b};
  let zone=null;if(Sw.tT&&Sw.tB){const pct=(px-Sw.tB.p)/((Sw.tT.p-Sw.tB.p)||1)*100;zone={swingHigh:r2(Sw.tT.p),swingLow:r2(Sw.tB.p),pct:+pct.toFixed(1),area:pct>=52.5?'premium':pct<=47.5?'discount':'equilibrium'}}
