@@ -1029,6 +1029,35 @@ async function stepBack() {
 }
 $("bBack").onclick = stepBack;
 $("bNext").onclick = stepNext;
+document.addEventListener("keydown", (e) => {
+  const tg = e.target, tn = tg && tg.tagName;
+  if (tn === "INPUT" || tn === "TEXTAREA" || tn === "SELECT") return;
+  const k = e.key;
+  if (k === " ") {
+    e.preventDefault();
+    $("bPlay").click();
+  } else if (k === "ArrowRight") {
+    e.preventDefault();
+    if (e.shiftKey) $("bDay").click();
+    else $("bNext").click();
+  } else if (k === "ArrowLeft" && e.shiftKey) {
+    e.preventDefault();
+    $("bBack").click();
+  } else if ((e.ctrlKey || e.metaKey) && (k === "z" || k === "Z")) {
+    e.preventDefault();
+    undo();
+  } else if (k === "Escape") {
+    if (mode !== "none") setMode(mode);
+    else select(-1);
+  } else if ((k === "Delete" || k === "Backspace") && sel >= 0) {
+    e.preventDefault();
+    $("sDel").click();
+  } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    const m = { h: "hline", t: "tline", c: "chan", e: "edit", d: "del" }[k.toLowerCase()];
+    if (m) setMode(m);
+    else if (k.toLowerCase() === "m") $("bMag").click();
+  }
+});
 $("bDay").onclick = stepDay;
 $("bPlay").onclick = () => {
   if (playT) return stopPlay();

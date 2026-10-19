@@ -1,22 +1,80 @@
-*{box-sizing:border-box}html{background:#000}body{margin:0;background:#000;color:#ddd;font-family:Tahoma,Arial,sans-serif;font-size:15px}
-header{padding:6px 8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#111}
-#price{color:#9afc41;font-weight:bold}#status{color:#fc0}
-#chartWrap{position:relative;width:100%;height:320px;height:calc(100vh - 170px);min-height:300px;max-height:75vh}#chart,#ov{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%}
+:root{--bg:#000;--p1:#0b0b0d;--p2:#131317;--p3:#1c1c22;--bd:#2a2a31;--tx:#e6e6e6;--mu:#8b8b93;--g:#9afc41;--gr:#9c9c9c;--red:#f23645;--r:10px}
+*{box-sizing:border-box}html{background:#000}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+#app{display:flex;flex-direction:column}
+#top{display:contents}
+header{order:0;padding:6px 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--p1);border-bottom:1px solid var(--bd)}
+.brand{display:flex;align-items:center;gap:6px}.brand small{color:var(--mu);font-size:12px}
+#clock{color:var(--mu);font-variant-numeric:tabular-nums}#price{color:var(--g);font-weight:700;font-variant-numeric:tabular-nums}#status{color:#fc0;font-size:12px}
+#chartWrap{order:1;position:relative;width:100%;height:320px;height:calc(100vh - 230px);min-height:300px;max-height:72vh}
+#chart,#ov{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%}
 #ov{pointer-events:none;z-index:5}#ov.active{pointer-events:auto;touch-action:none}
-.row{display:flex;flex-wrap:wrap;gap:6px;padding:4px 6px;align-items:center}
-button,select,.btn{min-height:44px;min-width:44px;padding:6px 12px;font-size:16px;background:#222;color:#eee;border:1px solid #444;border-radius:8px}
-button.on{background:#9afc41;color:#000}.buy{background:#1d5e1d}.sell{background:#7a1d1d}
-input,textarea{background:#111;color:#eee;border:1px solid #444;border-radius:6px;padding:8px;font-size:16px}
-input[type=number]{width:95px}textarea,#feel{width:calc(100% - 12px);margin:4px 6px}
-label{display:inline-flex;gap:4px;align-items:center}.panel{border-top:1px solid #333;padding:6px}
-#smcPanel label{display:flex;padding:6px}.hidden{display:none}.small{font-size:13px;color:#aaa}
-h3{margin:4px 6px;font-size:16px;color:#9afc41}#pos{padding:6px;font-weight:bold}
-#eq{width:100%;background:#050505}table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid #222;padding:3px;text-align:center}
-.w{color:#9afc41}.l{color:#f55}
-
-#tfRow{gap:4px}.tfb{flex:1;font-size:17px;font-weight:bold}.tfb.on{background:#9afc41;color:#000}
-#bPlay.play{flex:2;min-height:56px;font-size:22px;font-weight:bold;background:#1d5e1d;border-color:#9afc41}#bPlay.playing{background:#7a5a00;border-color:#fc0}
-#speed{min-height:56px;font-size:20px;font-weight:bold}
-#bUndo{font-weight:bold;border-color:#4aa3ff}#bUndo:disabled{opacity:.35}
-#selBar{position:absolute;top:6px;left:6px;z-index:10;display:flex;gap:4px;background:rgba(20,20,20,.92);border:1px solid #444;border-radius:10px;padding:4px;direction:ltr}#selBar.hidden{display:none}#selBar button{min-width:40px;min-height:40px;padding:4px 8px}#selBar #sExt.on{background:#4aa3ff;color:#000}
-#ctrl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}#ctrl #bPlay{grid-column:span 2}#ctrl button,#ctrl select{width:100%;min-width:0}
+#tfRow{order:2}#ctrl{order:3}#draw{order:4}#side{order:5}
+.row{display:flex;flex-wrap:wrap;gap:6px;padding:6px 8px;align-items:center}
+button,select,.btn{font:inherit;min-height:40px;padding:6px 12px;font-size:15px;background:var(--p3);color:var(--tx);border:1px solid var(--bd);border-radius:var(--r);cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{border-color:#444;background:#24242b}button:active{transform:translateY(1px)}
+button:disabled{opacity:.35;cursor:default}
+button.on{background:rgba(154,252,65,.14);border-color:var(--g);color:var(--g)}
+.buy{background:#123d12;border-color:#2c7a2c}.sell{background:#4a1015;border-color:#8a2530}
+.buy:hover{background:#185018}.sell:hover{background:#5e141b}
+input,textarea{font:inherit;background:var(--p1);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px;font-size:15px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--g)}
+input[type=number]{width:96px}textarea,#feel{width:100%;margin:4px 0}
+label{display:inline-flex;gap:6px;align-items:center;color:var(--mu)}
+.sep{width:1px;align-self:stretch;background:var(--bd);margin:2px 2px}
+/* segmented timeframe control */
+.seg{display:flex;flex:1;background:var(--p2);border:1px solid var(--bd);border-radius:999px;padding:3px;gap:2px}
+.seg .tfb{flex:1;min-height:38px;border:0;border-radius:999px;background:transparent;color:var(--gr);font-weight:700;font-size:15px;padding:4px 8px}
+.seg .tfb.on{background:var(--g);color:#000}
+.chip{border-radius:999px;font-weight:700;color:var(--gr)}
+/* replay controls */
+#ctrl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;direction:ltr}#ctrl>*{direction:rtl}
+#bBack{order:3}#bNext{order:4}#bDay{order:5}
+#ctrl #bPlay{grid-column:span 2}#ctrl button,#ctrl select{width:100%;min-width:0}
+#bPlay.play{min-height:52px;font-size:19px;font-weight:800;background:var(--g);color:#000;border:0;border-radius:999px;box-shadow:0 0 0 1px rgba(154,252,65,.25),0 4px 14px rgba(154,252,65,.18)}
+#bPlay.playing{background:#ffcc00;color:#000}
+#speed{min-height:52px;font-size:17px;font-weight:700;border-radius:999px;text-align:center;color:var(--g)}
+#bBack,#bNext,#bDay{border-radius:999px;color:var(--gr);font-weight:600}
+/* drawing toolbar (mobile: compact horizontal) */
+#draw{flex-wrap:nowrap;overflow-x:auto;gap:4px;scrollbar-width:none;background:var(--p1);border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)}
+#draw::-webkit-scrollbar{display:none}
+#draw button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:54px;min-height:50px;padding:4px 6px;background:transparent;border-color:transparent;color:var(--gr)}
+#draw button i{font-style:normal;font-size:18px;line-height:1}#draw button span{font-size:11px}
+#draw button.on{background:rgba(154,252,65,.14);border-color:var(--g);color:var(--g)}
+/* selection toolbar */
+#selBar{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:4px;background:rgba(19,19,23,.96);border:1px solid var(--bd);border-radius:999px;padding:4px 6px;box-shadow:0 6px 20px rgba(0,0,0,.5);direction:ltr}
+#selBar.hidden{display:none}#selBar button{min-width:36px;min-height:36px;padding:0 8px;border-radius:999px;background:transparent;border-color:transparent}
+#selBar .sw{min-width:24px!important;width:24px;min-height:24px!important;height:24px;padding:0;border:2px solid rgba(255,255,255,.15)!important}
+#selBar #sExt.on{background:rgba(74,163,255,.2);color:#4aa3ff;border-color:#4aa3ff}
+/* side panels */
+.panel{background:var(--p1);border:1px solid var(--bd);border-radius:12px;margin:8px;padding:8px}
+.panel .row{padding:4px 0}
+#smcPanel label{display:flex;padding:6px 0;color:var(--tx)}.hidden{display:none!important}.small{font-size:12px;color:var(--mu)}
+h3{margin:2px 0 6px;font-size:14px;color:var(--g);font-weight:700}
+#pos{padding:6px 0;font-weight:700}
+#eq{width:100%;background:#050505;border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid #222;padding:4px;text-align:center}th{color:var(--mu);font-weight:600}
+.w{color:var(--g)}.l{color:var(--red)}
+#bBuy,#bSell{flex:1;font-weight:800;min-height:46px}#bClose{flex-basis:100%}
+/* ---------- desktop pro layout ---------- */
+@media (min-width:900px){
+ html,body{height:100%;overflow:hidden}
+ #app{display:grid;height:100vh;direction:ltr;grid-template-columns:56px minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr) auto;
+  grid-template-areas:"top top top" "draw chart side" "draw ctrl side"}
+ #app>*{direction:rtl}
+ #top{display:flex;grid-area:top;align-items:center;justify-content:space-between;background:var(--p1);border-bottom:1px solid var(--bd);direction:rtl}
+ header{border:0;background:transparent;padding:6px 14px}
+ #tfRow{flex-wrap:nowrap;padding:6px 14px}.seg{flex:none}.seg .tfb{min-height:32px;padding:2px 14px;font-size:14px}
+ button,select{min-height:34px;font-size:14px}
+ #chartWrap{grid-area:chart;height:auto;max-height:none;min-height:0}
+ #ctrl{grid-area:ctrl;display:flex;justify-content:center;gap:8px;padding:8px;background:var(--p1);border-top:1px solid var(--bd)}
+ #ctrl #bPlay,#ctrl button,#ctrl select{width:auto}
+ #bPlay.play{min-height:40px;font-size:16px;padding:0 26px;order:2}#speed{min-height:40px;font-size:15px;order:5}
+ #bBack{order:1}#bNext{order:3}#bDay{order:4}
+ #draw{grid-area:draw;flex-direction:column;flex-wrap:nowrap;overflow:visible;padding:8px 4px;gap:4px;border:0;border-left:1px solid var(--bd);border-right:1px solid var(--bd);direction:ltr}
+ #draw button{min-width:44px;width:44px;min-height:44px;height:44px;padding:0}
+ #draw button span{display:none}#draw .sep{width:auto;height:1px;margin:4px 6px;align-self:stretch}
+ #side{grid-area:side;overflow-y:auto;border-right:0;border-left:1px solid var(--bd);background:#050506;padding-bottom:20px}
+ #side::-webkit-scrollbar{width:8px}#side::-webkit-scrollbar-thumb{background:#222;border-radius:8px}
+ [title]{position:relative}
+}
