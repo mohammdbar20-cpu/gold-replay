@@ -1,7 +1,7 @@
 // Minimal Arabic -> German i18n: dictionary + DOM observer. Arabic is the source language.
 (function(){
 var D={"الكورس":"Kurs","متابعة من حيث توقفت":"Dort weitermachen, wo du aufgehört hast","الدروس":"Lektionen","علّم المستوى على الشارت":"Markiere das Level im Chart","ارسم خطين: أعلى وأدنى المنطقة":"Zeichne zwei Linien: Ober- und Unterkante der Zone","اسحب مقابض المربع لضبط الدخول والوقف والهدف":"Ziehe die Griffe, um Entry, SL und TP einzustellen","استخدم ▶| أو ▶️ للتقدم ثم اضغط \"هنا\"":"Mit ▶| oder ▶️ vorspulen, dann „Hier“ tippen","هنا":"Hier","تحقّق":"Prüfen","ممتاز":"Ausgezeichnet","جزئياً":"Teilweise","ليس هذه المرة":"Diesmal nicht","انتهى الوقت":"Zeit abgelaufen","التالي":"Weiter","نجحت في تحدّي الزعيم!":"Boss-Challenge bestanden!","لم تنجح بعد — راجع وحاول لاحقاً":"Noch nicht bestanden – wiederholen und erneut versuchen","الخريطة":"Karte","المزيد":"Mehr erfahren","وحدة":"Modul",
-"إعادة تشغيل الذهب":"Gold-Replay","تدريب الذهب":"Gold-Training","تعذر تحميل مكتبة الرسم البياني":"Chart-Bibliothek konnte nicht geladen werden","خطأ في التطبيق":"App-Fehler",
+"الغرفة":"Der Raum","تدريب الذهب":"Gold-Training","تعذر تحميل مكتبة الرسم البياني":"Chart-Bibliothek konnte nicht geladen werden","خطأ في التطبيق":"App-Fehler",
 "قناة سعرية منتظمة وخروج منها":"Saubere Preiskanal-Struktur und Ausbruch","اتجاه قوي وكسر قمة/قاع جديد":"Starker Trend und Bruch eines neuen Hochs/Tiefs","كسر معاكس بعد اتجاه طويل":"Gegenbruch nach langem Trend","ذيل طويل خلف قمة/قاع مهم":"Langer Docht über/unter wichtigem Hoch/Tief","شمعة عنيفة مفاجئة":"Plötzliche heftige Kerze","سوق عرضي ضيق":"Enge Seitwärtsphase",
 "حدد الاتجاه والخطة قبل الكشف":"Richtung und Plan vor dem Aufdecken festlegen","وقف الخسارة في الجهة الخطأ":"Stop-Loss auf der falschen Seite","تم ضبط الاختبار من المربع":"Quiz aus der Box übernommen","تمت متابعة الجلسة السابقة":"Vorherige Sitzung fortgesetzt","نفّذ، أو اختر الاتجاه، ثم":"Ausführen, oder Richtung wählen, dann",
 "يتم حفظ موضعك تلقائياً":"Deine Position wird automatisch gespeichert","الربح/الخسارة المفتوحة":"Offener G/V","قمم/قيعان قوية وضعيفة":"Starke/schwache Hochs/Tiefs","لحجم لوت مربع المركز":"für die Lotgröße der Positionsbox","الهدف في الجهة الخطأ":"Ziel auf der falschen Seite","للشراء؛ اعكسها للبيع":"für Kauf; für Verkauf umkehren",
@@ -34,7 +34,7 @@ function apply(){var de=L==='de';document.documentElement.lang=de?'de':'ar';docu
  var A=window.alert,C=window.confirm,P=window.prompt;window.alert=function(m){return A.call(window,tr(String(m)))};window.confirm=function(m){return C.call(window,tr(String(m)))};window.prompt=function(m,d){return P.call(window,tr(String(m)),d)};}
 window.I18N={tr:tr,get lang(){return L},de:function(){return L==='de'}};
 function chooser(){var o=document.createElement('div');o.id='langPick';
- o.innerHTML='<div class="lp-card"><div class="lp-logo">🟡 XAUUSD</div><div class="lp-t">اختر اللغة · Sprache wählen</div><button data-l="ar" dir="rtl">عربي</button><button data-l="de" dir="ltr">Deutsch</button></div>';
+ o.innerHTML='<div class="lp-card"><div class="lp-logo">🟡 الغرفة · Der Raum</div><div class="lp-t">XAUUSD</div><div class="lp-t">اختر اللغة · Sprache wählen</div><button data-l="ar" dir="rtl">عربي</button><button data-l="de" dir="ltr">Deutsch</button></div>';
  document.body.appendChild(o);o.querySelectorAll('button').forEach(function(b){b.onclick=function(){L=b.getAttribute('data-l');try{localStorage.setItem('gr_lang',L)}catch(e){}o.remove();apply();if(window.__onLang)window.__onLang(L)}});}
 document.documentElement.dir=L==='de'?'ltr':'rtl';
 if(L)apply();else chooser();

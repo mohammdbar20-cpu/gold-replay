@@ -19,7 +19,7 @@
     "\u0627\u0644\u062E\u0631\u064A\u0637\u0629": "Karte",
     "\u0627\u0644\u0645\u0632\u064A\u062F": "Mehr erfahren",
     "\u0648\u062D\u062F\u0629": "Modul",
-    "\u0625\u0639\u0627\u062F\u0629 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0630\u0647\u0628": "Gold-Replay",
+    "\u0627\u0644\u063A\u0631\u0641\u0629": "Der Raum",
     "\u062A\u062F\u0631\u064A\u0628 \u0627\u0644\u0630\u0647\u0628": "Gold-Training",
     "\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0645\u0643\u062A\u0628\u0629 \u0627\u0644\u0631\u0633\u0645 \u0627\u0644\u0628\u064A\u0627\u0646\u064A": "Chart-Bibliothek konnte nicht geladen werden",
     "\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u062A\u0637\u0628\u064A\u0642": "App-Fehler",
@@ -290,7 +290,7 @@
   function chooser() {
     var o = document.createElement("div");
     o.id = "langPick";
-    o.innerHTML = '<div class="lp-card"><div class="lp-logo">\u{1F7E1} XAUUSD</div><div class="lp-t">\u0627\u062E\u062A\u0631 \u0627\u0644\u0644\u063A\u0629 \xB7 Sprache w\xE4hlen</div><button data-l="ar" dir="rtl">\u0639\u0631\u0628\u064A</button><button data-l="de" dir="ltr">Deutsch</button></div>';
+    o.innerHTML = '<div class="lp-card"><div class="lp-logo">\u{1F7E1} \u0627\u0644\u063A\u0631\u0641\u0629 \xB7 Der Raum</div><div class="lp-t">XAUUSD</div><div class="lp-t">\u0627\u062E\u062A\u0631 \u0627\u0644\u0644\u063A\u0629 \xB7 Sprache w\xE4hlen</div><button data-l="ar" dir="rtl">\u0639\u0631\u0628\u064A</button><button data-l="de" dir="ltr">Deutsch</button></div>';
     document.body.appendChild(o);
     o.querySelectorAll("button").forEach(function(b) {
       b.onclick = function() {

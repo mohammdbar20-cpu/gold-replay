@@ -1,19 +1,20 @@
 <!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>إعادة تشغيل الذهب XAUUSD</title>
+<title>الغرفة · XAUUSD</title>
+<meta name="application-name" content="الغرفة"><meta name="apple-mobile-web-app-title" content="الغرفة"><meta name="description" content="الغرفة — غرفة تدريب الذهب XAUUSD · Der Raum — Gold-Trainingsraum"><meta name="theme-color" content="#07070a"><meta property="og:title" content="الغرفة · Der Raum"><link rel="manifest" href="manifest.json">
 <script>(function(){function show(m){try{var b=document.getElementById('errBox');if(!b){b=document.createElement('div');b.id='errBox';b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#a00;color:#fff;padding:10px;font:14px Tahoma,Arial;direction:rtl;white-space:pre-wrap;max-height:40vh;overflow:auto';(document.body||document.documentElement).appendChild(b);}b.textContent+= '⚠️ خطأ في التطبيق: '+m+'\n';}catch(e){}}
 window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+')');};
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=24"></head><body>
+<link rel="stylesheet" href="style.css?v=25"></head><body>
 <div id="app">
 <div id="top">
-<header><span class="brand">🟡 <b>XAUUSD</b><small>تدريب الذهب</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
+<header><span class="brand">🟡 <b>الغرفة</b><small>XAUUSD</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
 <div class="row" id="tfRow">
  <select id="tf" hidden><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
  <div class="seg"><button class="tfb" data-tf="D1" title="يومي">يوم</button><button class="tfb" data-tf="H4" title="4 ساعات">4س</button><button class="tfb" data-tf="H1" title="ساعة">1س</button><button class="tfb" data-tf="M15" title="15 دقيقة">15د</button></div>
- <button id="bCourse" class="chip course-chip" title="الكورس">🎓 الكورس</button><button id="bEma" class="chip" title="المتوسطات المتحركة EMA">EMA</button><button id="bMacd" class="chip" title="مؤشر الماكد MACD">MACD</button><button id="bSmc" class="chip" title="مؤشر Smart Money Concepts">ƒx SMC</button>
+ <button id="bCourse" class="chip course-chip" title="الكورس">🎓<span class="cc-t"> الكورس</span></button><button id="bEma" class="chip" title="المتوسطات المتحركة EMA">EMA</button><button id="bMacd" class="chip" title="مؤشر الماكد MACD">MACD</button><button id="bSmc" class="chip" title="مؤشر Smart Money Concepts">ƒx SMC</button>
 </div>
 </div>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas>
@@ -87,4 +88,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="i18n.js?v=24"></script><script src="app.js?v=24"></script></body></html>
+<script src="i18n.js?v=25"></script><script src="app.js?v=25"></script></body></html>

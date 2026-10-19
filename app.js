@@ -1833,7 +1833,7 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { ema: () => emaSer ? emaSer.map((x) => {
+window.GR = { coach: () => coachData(), ema: () => emaSer ? emaSer.map((x) => {
   const d = x.data().filter((p) => p.value != null);
   return { n: d.length, last: d[d.length - 1] };
 }) : null, get sty() {
@@ -2034,7 +2034,8 @@ $("qGo").onclick = async () => {
 function coachData() {
   const j = journal(), qs = LS("gr_quiz") || [], w = j.filter((t) => t.pnl > 0).length, Rs = j.filter((t) => t.R != null).map((t) => t.R);
   return {
-    app: "gold-replay",
+    app: window.I18N && I18N.de() ? "Der Raum" : "\u0627\u0644\u063A\u0631\u0641\u0629",
+    appId: "gold-replay",
     v: 1,
     exported: (/* @__PURE__ */ new Date()).toISOString(),
     session: { cursor: ds(S.cur), tf: S.tf, startBalance: S.startBal, balance: S.balance, openPositions: S.ps, equity: +(S.balance + S.ps.reduce((a, p) => a + fpl(p), 0)).toFixed(2) },

@@ -170,3 +170,4 @@ body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
 .cs-expl{line-height:1.6;margin:6px 0}.cs-hint{background:#1e293b;border-radius:10px;padding:8px;font-size:13px}
 .cs-boss{text-align:center;padding:10px}.cs-big{font-size:54px}
 @media (min-width:900px){#cSheet{left:auto;top:52px;width:400px;max-height:none;border-radius:0;border-top:0;border-inline-start:2px solid #6d28d9}body.course #chartWrap{height:calc(100vh - 70px)!important;margin-inline-end:400px}body.course #app{grid-template-areas:"top top top" "chart chart chart" "macd macd macd" "ctrl ctrl ctrl"}}
+@media (max-width:899px){#tfRow{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}#tfRow::-webkit-scrollbar{display:none}#tfRow>*{flex-shrink:0}.cc-t{display:none}#tfRow .chip{padding-left:9px;padding-right:9px}}
