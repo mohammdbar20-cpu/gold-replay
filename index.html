@@ -6,7 +6,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=7"></head><body>
+<link rel="stylesheet" href="style.css?v=8"></head><body>
 <header><b>🟡 تدريب الذهب</b> <span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas>
 <div id="selBar" class="hidden"><button id="sExt">↦ تمديد</button><button data-c="#4aa3ff" style="background:#4aa3ff"></button><button data-c="#f23645" style="background:#f23645"></button><button data-c="#9afc41" style="background:#9afc41"></button><button data-c="#ffcc00" style="background:#ffcc00"></button><button data-c="#ffffff" style="background:#fff"></button><button id="sDel">🗑</button><button id="sOk">✔</button></div></div>
@@ -60,4 +60,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
 <div class="panel"><h3>سجل الصفقات</h3>
  <div class="row"><button id="bCsv">تصدير CSV</button><button id="bJson">تصدير JSON</button><label class="btn">استيراد<input type="file" id="imp" accept=".json,.csv" hidden></label><button id="bWipe">حذف السجل</button></div>
  <div id="journal"></div></div>
-<script src="app.js?v=7"></script></body></html>
+<script src="app.js?v=8"></script></body></html>
