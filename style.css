@@ -237,3 +237,6 @@ html[lang=de] #quick.hasq .big{font-size:14px;padding:0 3px;letter-spacing:-.2px
 #qCW.off #qClose,#qCW.off #qMore{opacity:.4;border-color:#555;color:#999;cursor:default}
 #bClose:disabled{opacity:.45}
 @media (min-width:900px){#quick #qCW{display:flex}#qClose{min-width:96px}}
+/* course on desktop: the sheet sits on the physical right; reserve that space (not inline-end, which flips in RTL and pushed the chart off-screen) */
+@media (min-width:900px){body.course #chartWrap,body.course #macd{margin-inline-end:0!important;margin-left:0!important;margin-right:400px!important;min-width:0;width:auto!important}
+ body.course #app{grid-template-rows:auto minmax(0,1fr) auto auto auto}}
