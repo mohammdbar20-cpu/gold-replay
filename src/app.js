@@ -20,7 +20,7 @@ function dec(txt){const L=txt.split('\n');let n=L.length-1;if(L[n]==='')n--;
 const LRU=[];
 // network hiccups on mobile: retry with backoff before giving up
 async function fetchRetry(u,n=4){for(let i=0;;i++){try{const r=await fetch(u);if(r.ok)return await r.text();if(r.status===404||i>=n-1)throw Error(u.replace('data/','')+' '+r.status)}catch(e){if(i>=n-1)throw e}await new Promise(q=>setTimeout(q,400*(i+1)))}}
-async function load(path){if(!cache[path]){LRU.push(path);while(LRU.length>10){delete cache[LRU.shift()]}cache[path]=fetchRetry('data/'+path).then(dec);cache[path].catch(()=>{delete cache[path]})}return cache[path];}
+async function load(path){if(!cache[path]){const big=path.startsWith('m1/'),Lq=big?LRU:(LRU.s||(LRU.s=[]));Lq.push(path);while(Lq.length>(big?10:160)){delete cache[Lq.shift()]}cache[path]=fetchRetry('data/'+path).then(dec);cache[path].catch(()=>{delete cache[path]})}return cache[path];}
 function cat(arr){arr=arr.filter(Boolean);const n=arr.reduce((a,b)=>a+b.n,0),R={n};
  for(const k of 'tohlc'){R[k]=new Float64Array(n);let p=0;for(const a of arr){R[k].set(a[k],p);p+=a.n}}return R;}
 const ym=t=>{const d=new Date(t*1000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')};
@@ -30,9 +30,11 @@ async function m1(a,b){ // M1 bars covering [a,b]
  if(!isFinite(a)||!isFinite(b))return {n:0,t:[],o:[],h:[],l:[],c:[]};
  const ms=[];let k=ym(a);const e=ym(b);let g=0;while(k<=e&&g++<240){if(MAN.m1.includes(k))ms.push(k);k=nextYm(k)}
  return cat(await Promise.all(ms.map(m=>load('m1/'+m+'.csv'))));}
+// lazy history: extra bars per TF, grown when the user scrolls to the left edge
+const EXT={},BPM={M5:6000,M15:2000,H1:500},EXTCAP={D1:1e9,H4:1e9,H1:40000,M15:30000,M5:20000},EXTCH={D1:1e9,H4:4000,H1:4000,M15:6000,M5:6000};let extBusy=false,PST=null;
 async function tfBars(tf,t){
  if(MAN.tf[tf].months){ // monthly files: only the months around the cursor
-  const back=tf==="H1"?3:1;let k=ym(t);const ks=[];for(let i=0;i<back;i++)k=prevYm(k);
+  const back=(tf==="H1"?3:1)+Math.ceil((EXT[tf]||0)/BPM[tf]);let k=ym(t);const ks=[];for(let i=0;i<back;i++)k=prevYm(k);
   for(let i=0;i<back+2;i++){if(MAN.tf[tf].months.includes(k))ks.push(k);k=nextYm(k)}
   const key='w:'+tf+ks.join();if(cache.__wk!==key){cache.__wk=key;cache.__w=Promise.all(ks.map(v=>load(tf+'m/'+v+'.csv'))).then(cat)}return cache.__w;}
  return load(tf+'.csv');}
@@ -48,6 +50,7 @@ const chart=LightweightCharts.createChart($('chart'),{layout:{background:{color:
  grid:{vertLines:{visible:false},horzLines:{visible:false}},rightPriceScale:{borderColor:'#333',minimumWidth:66},
  timeScale:{borderColor:'#333',timeVisible:true,rightOffset:8},crosshair:{mode:0},autoSize:true});
 const ser=chart.addCandlestickSeries({upColor:'#9afc41',downColor:'#9c9c9c',borderUpColor:'#9c9c9c',borderDownColor:'#9c9c9c',wickUpColor:'#9c9c9c',wickDownColor:'#9c9c9c',priceFormat:{type:'price',precision:2,minMove:0.01}});
+chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!r)return;candleStyle();if(r.from<40&&B&&!extBusy)setTimeout(moreHistory,0)});
 let plines=[],B0=null;
 // ---------- MACD pane (revealed candles only) ----------
 // ---------- EMA overlay: warm-up from all loaded history before the window (revealed only) ----------
@@ -82,23 +85,38 @@ function updMacd(force){const m=S.macd;if(!m||!m.on||!B)return;macdInit();
  mPrev={key,n};const r=chart.timeScale().getVisibleLogicalRange();if(r)MC.timeScale().setVisibleLogicalRange(r);}
 function macdUI(){const m=S.macd;$('bMacd').classList.toggle('on',m.on);$('macd').classList.toggle('hidden',!m.on);document.body.classList.toggle('macd-on',m.on);$('mF').value=m.f;$('mS').value=m.s;$('mG').value=m.g;}
 let RG=0,RK='';
+function moreHistory(){if(extBusy||!B||busy)return;const tf=S.tf,st=B.k-B.nDone;const monthly=MAN.tf[tf].months;
+ const atStart=st<=0&&(!monthly||ym(B.A.t[0])<=MAN.tf[tf].months[0]);if(atStart)return;
+ const cur=EXT[tf]||0;if(cur>=EXTCAP[tf])return;EXT[tf]=Math.min(EXTCAP[tf],cur+EXTCH[tf]);extBusy=true;status('⏳ تحميل تاريخ أقدم…');
+ render().catch(e=>console.warn(e)).finally(()=>{extBusy=false})}
+let thinMode=null;function candleStyle(){const sp=chart.timeScale().options().barSpacing,thin=sp<3;if(thin===thinMode)return;thinMode=thin;
+ ser.applyOptions(thin?{wickUpColor:'#9afc41',borderUpColor:'#9afc41'}:{wickUpColor:'#9c9c9c',borderUpColor:'#9c9c9c'})}
 function toLatest(){const T=chart.timeScale();T.scrollToPosition(T.options().rightOffset,false)}
 async function render(){
  const g=++RG,tf=S.tf,cur=S.cur,A=await tfBars(tf,cur);if(g!==RG)return;
  let k=bs(A.t,cur,A.n);if(k<0)k=0;
- const st=Math.max(0,k-WIN),U=[],data=[],O=[],H=[],L=[],C=[];
+ const win=tf==='D1'?1e9:WIN+(EXT[tf]||0);let st=Math.max(0,k-win);
+ // keep the window start fixed while it stays within 300 bars of the target, so play can append incrementally
+ if(PST&&PST.tf===tf&&PST.A===A&&PST.st<=st+300&&PST.st>=st-300&&PST.st<=k)st=Math.max(0,PST.st);
+ const U=[],data=[],O=[],H=[],L=[],C=[];
  for(let i=st;i<k;i++){U.push(A.t[i]);O.push(A.o[i]);H.push(A.h[i]);L.push(A.l[i]);C.push(A.c[i]);}
  const M=await m1(A.t[k],cur);if(g!==RG)return;let fo=null,fh=-1e9,fl=1e9,fc=null;
  for(let i=0;i<M.n;i++){const t=M.t[i];if(t<A.t[k]||t>cur)continue;if(fo===null)fo=M.o[i];fh=Math.max(fh,M.h[i]);fl=Math.min(fl,M.l[i]);fc=M.c[i];}
  const nDone=U.length;
  if(fo!==null){U.push(A.t[k]);O.push(fo);H.push(fh);L.push(fl);C.push(fc);}
  for(let i=0;i<U.length;i++)data.push({time:U[i]+off(U[i]),open:O[i],high:H[i],low:L[i],close:C[i]});
- ser.setData(data);B0=data;
- {const rk=tf+'|'+cur;if(rk!==RK){RK=rk;const lr=chart.timeScale().getVisibleLogicalRange();if(!lr||lr.to<data.length-1)toLatest();}}
+ const T=chart.timeScale(),lr0=T.getVisibleLogicalRange(),rk=tf+'|'+cur,P=PST;
+ let inc=P&&P.tf===tf&&P.A===A&&P.st===st&&cur>=P.cur&&B0&&B0.length&&data.length>=B0.length&&data.length-B0.length<50;
+ if(inc){const from=Math.max(0,B0.length-1);if(data[from].time!==B0[from].time&&!(data[from].time>B0[from].time))inc=false;else{for(let i=from;i<data.length;i++)ser.update(data[i])}}
+ if(!inc)ser.setData(data);
+ // same cursor but the window grew/shrank on the left (lazy history): keep the view on the same candles
+ if(!inc&&rk===RK&&lr0&&P&&P.tf===tf&&P.U0!==U[0]){const sh=bs(U,P.U0,U.length);if(sh>0)T.setVisibleLogicalRange({from:lr0.from+sh,to:lr0.to+sh})}
+ PST={tf,A,st,cur,U0:U[0]};B0=data;
+ if(rk!==RK){RK=rk;const lr=T.getVisibleLogicalRange();if(!lr||lr.to<data.length-1)toLatest();}
  B={U,O,H,L,C,n:U.length,nDone,tfs:TFS[tf],A,k};
  S.price=C[C.length-1];
  B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();updEma();
- $('clock').textContent=ds(cur)+' برلين';$('price').textContent=S.price.toFixed(2);
+ $('clock').textContent=ds(cur)+' برلين';{const sd=$('startDate');if(sd&&document.activeElement!==sd)sd.value=ds(cur).slice(0,10);}$('price').textContent=S.price.toFixed(2);
  updLines();updPos();
 }
 // ---------- stepping ----------
@@ -146,7 +164,7 @@ function updPos(){const open=S.ps.reduce((a,p)=>a+fpl(p),0),eq=S.balance+open;$(
  else{$('pos').innerHTML='<div class="plist">'+S.ps.map(p=>{const pl=fpl(p);return '<div class="pitem'+(p.quick?' pq':'')+'"><span class="'+(p.side==='buy'?'w':'l')+'">'+(p.side==='buy'?'شراء':'بيع')+'</span> '+p.lots+' @ '+p.entry.toFixed(2)+(p.sl!=null?' | SL '+p.sl:'')+(p.tp!=null?' | TP '+p.tp:'')+' <b class="'+(pl>=0?'w':'l')+'">'+(pl>=0?'+':'')+pl.toFixed(2)+'$ ('+fpips(p).toFixed(0)+'p)</b>'+(p.quick?'<span class="small qhint">⚡ الإغلاق بجانب شراء/بيع</span>':mgmtBtns(p)+'<button class="pclose" data-id="'+p.id+'">✕ إغلاق</button>')+'</div>'}).join('')+'</div>'+(S.ps.filter(x=>!x.quick).length>1?'<button id="bCloseAll">إغلاق الكل</button>':'');
   document.querySelectorAll('.pclose').forEach(b=>b.onclick=()=>{const p=S.ps.find(x=>String(x.id)===b.dataset.id);if(p)closePos(S.price,'يدوي',null,p)});
   const ca=$('bCloseAll');if(ca)ca.onclick=closeAll;mgmtBind();}
- qUI();updRisk();}
+ qUI();{const bc=$('bClose'),n=S.ps.length;bc.disabled=!n;bc.textContent=n>1?'إغلاق الكل ('+n+')':'إغلاق الصفقة';}updRisk();}
 function updRisk(){const p=S.pos,e=p?p.entry:S.price,sl=p?p.sl:num('sl'),lots=p?p.lots:num('lots'),tp=p?p.tp:num('tp');
  if(sl==null||!lots){$('risk').textContent='المخاطرة: —';return}
  const r=Math.abs(e-sl)*OZ*lots;let s='المخاطرة: '+r.toFixed(2)+'$ ('+(r/S.balance*100).toFixed(2)+'%)';
@@ -444,7 +462,7 @@ $('sOk').onclick=()=>select(-1);
 $('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save();select(-1)}};
 $('bSmc').onclick=()=>$('smcPanel').classList.toggle('hidden');
 $('bBuy').onclick=()=>openPos('buy');$('bSell').onclick=()=>openPos('sell');
-$('bClose').onclick=()=>closeAll();
+$('bClose').onclick=()=>S.ps.slice().forEach(p=>closePos(S.price,'يدوي',null,p));
 $('qBuy').onclick=()=>openPos('buy',true);$('qSell').onclick=()=>openPos('sell',true);
 $('qLot').onchange=()=>{const v=parseFloat($('qLot').value);if(v>0){S.qlot=v;save()}};
 ['sl','tp','lots'].forEach(k=>$(k).oninput=()=>{updLines();updRisk()});

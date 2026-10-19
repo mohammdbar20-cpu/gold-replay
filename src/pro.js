@@ -124,8 +124,8 @@ window.GR.jumpTo=t=>jumpTo(t);window.GR.berlinToUtc=berlinToUtc;
 const qPos=()=>S.ps.filter(p=>p.quick);
 const qLatest=()=>qPos().reduce((a,p)=>!a||p.open>a.open||(p.open===a.open&&p.id>a.id)?p:a,null);
 let qPopOpen=false;
-function qUI(){const q=qPos(),w=$('qCW');if(!w)return;const on=q.length>0;w.classList.toggle('hidden',!on);$('quick').classList.toggle('hasq',on);
- if(!on){qPopOpen=false;$('qPop').classList.add('hidden');$('qPop')._h='';return}
+function qUI(){const q=qPos(),w=$('qCW');if(!w)return;const on=q.length>0;w.classList.remove('hidden');$('quick').classList.add('hasq');w.classList.toggle('off',!on);$('qClose').disabled=!on;$('qMore').disabled=!on;
+ if(!on){qPopOpen=false;$('qPop').classList.add('hidden');$('qPop')._h='';$('qPL').textContent='—';$('qPL').className='';$('qMore').textContent='▾';return}
  const pl=q.reduce((a,p)=>a+fpl(p),0),L=qLatest(),lpl=fpl(L);
  $('qPL').textContent=(lpl>=0?'+':'')+lpl.toFixed(2)+'$';$('qPL').className=lpl>=0?'w':'l';
  $('qMore').textContent=(q.length>1?q.length+' ':'')+(qPopOpen?'▴':'▾');$('qMore').setAttribute('aria-expanded',String(qPopOpen));

@@ -234,3 +234,6 @@ header .brand,#clock,#price{white-space:nowrap}
 #qClose span{white-space:nowrap}
 html[lang=de] #qClose{font-size:12px;min-width:74px;padding:2px 5px}
 html[lang=de] #quick.hasq .big{font-size:14px;padding:0 3px;letter-spacing:-.2px}
+#qCW.off #qClose,#qCW.off #qMore{opacity:.4;border-color:#555;color:#999;cursor:default}
+#bClose:disabled{opacity:.45}
+@media (min-width:900px){#quick #qCW{display:flex}#qClose{min-width:96px}}

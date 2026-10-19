@@ -50,9 +50,10 @@ async function fetchRetry(u, n = 4) {
 }
 async function load(path) {
   if (!cache[path]) {
-    LRU.push(path);
-    while (LRU.length > 10) {
-      delete cache[LRU.shift()];
+    const big = path.startsWith("m1/"), Lq = big ? LRU : LRU.s || (LRU.s = []);
+    Lq.push(path);
+    while (Lq.length > (big ? 10 : 160)) {
+      delete cache[Lq.shift()];
     }
     cache[path] = fetchRetry("data/" + path).then(dec);
     cache[path].catch(() => {
@@ -108,9 +109,11 @@ async function m1(a, b) {
   }
   return cat(await Promise.all(ms.map((m) => load("m1/" + m + ".csv"))));
 }
+const EXT = {}, BPM = { M5: 6e3, M15: 2e3, H1: 500 }, EXTCAP = { D1: 1e9, H4: 1e9, H1: 4e4, M15: 3e4, M5: 2e4 }, EXTCH = { D1: 1e9, H4: 4e3, H1: 4e3, M15: 6e3, M5: 6e3 };
+let extBusy = false, PST = null;
 async function tfBars(tf, t) {
   if (MAN.tf[tf].months) {
-    const back = tf === "H1" ? 3 : 1;
+    const back = (tf === "H1" ? 3 : 1) + Math.ceil((EXT[tf] || 0) / BPM[tf]);
     let k = ym(t);
     const ks = [];
     for (let i = 0; i < back; i++) k = prevYm(k);
@@ -174,6 +177,11 @@ const chart = LightweightCharts.createChart($("chart"), {
   autoSize: true
 });
 const ser = chart.addCandlestickSeries({ upColor: "#9afc41", downColor: "#9c9c9c", borderUpColor: "#9c9c9c", borderDownColor: "#9c9c9c", wickUpColor: "#9c9c9c", wickDownColor: "#9c9c9c", priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
+chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+  if (!r) return;
+  candleStyle();
+  if (r.from < 40 && B && !extBusy) setTimeout(moreHistory, 0);
+});
 let plines = [], B0 = null;
 const EMAC = ["#ffcc00", "#4aa3ff", "#e91e63"];
 let emaSer = null, emaPrev = null;
@@ -295,6 +303,28 @@ function macdUI() {
   $("mG").value = m.g;
 }
 let RG = 0, RK = "";
+function moreHistory() {
+  if (extBusy || !B || busy) return;
+  const tf = S.tf, st = B.k - B.nDone;
+  const monthly = MAN.tf[tf].months;
+  const atStart = st <= 0 && (!monthly || ym(B.A.t[0]) <= MAN.tf[tf].months[0]);
+  if (atStart) return;
+  const cur = EXT[tf] || 0;
+  if (cur >= EXTCAP[tf]) return;
+  EXT[tf] = Math.min(EXTCAP[tf], cur + EXTCH[tf]);
+  extBusy = true;
+  status("\u23F3 \u062A\u062D\u0645\u064A\u0644 \u062A\u0627\u0631\u064A\u062E \u0623\u0642\u062F\u0645\u2026");
+  render().catch((e) => console.warn(e)).finally(() => {
+    extBusy = false;
+  });
+}
+let thinMode = null;
+function candleStyle() {
+  const sp = chart.timeScale().options().barSpacing, thin = sp < 3;
+  if (thin === thinMode) return;
+  thinMode = thin;
+  ser.applyOptions(thin ? { wickUpColor: "#9afc41", borderUpColor: "#9afc41" } : { wickUpColor: "#9c9c9c", borderUpColor: "#9c9c9c" });
+}
 function toLatest() {
   const T = chart.timeScale();
   T.scrollToPosition(T.options().rightOffset, false);
@@ -304,7 +334,10 @@ async function render() {
   if (g !== RG) return;
   let k = bs(A.t, cur, A.n);
   if (k < 0) k = 0;
-  const st = Math.max(0, k - WIN), U = [], data = [], O = [], H = [], L = [], C = [];
+  const win = tf === "D1" ? 1e9 : WIN + (EXT[tf] || 0);
+  let st = Math.max(0, k - win);
+  if (PST && PST.tf === tf && PST.A === A && PST.st <= st + 300 && PST.st >= st - 300 && PST.st <= k) st = Math.max(0, PST.st);
+  const U = [], data = [], O = [], H = [], L = [], C = [];
   for (let i = st; i < k; i++) {
     U.push(A.t[i]);
     O.push(A.o[i]);
@@ -332,15 +365,26 @@ async function render() {
     C.push(fc);
   }
   for (let i = 0; i < U.length; i++) data.push({ time: U[i] + off(U[i]), open: O[i], high: H[i], low: L[i], close: C[i] });
-  ser.setData(data);
-  B0 = data;
-  {
-    const rk = tf + "|" + cur;
-    if (rk !== RK) {
-      RK = rk;
-      const lr = chart.timeScale().getVisibleLogicalRange();
-      if (!lr || lr.to < data.length - 1) toLatest();
+  const T = chart.timeScale(), lr0 = T.getVisibleLogicalRange(), rk = tf + "|" + cur, P = PST;
+  let inc = P && P.tf === tf && P.A === A && P.st === st && cur >= P.cur && B0 && B0.length && data.length >= B0.length && data.length - B0.length < 50;
+  if (inc) {
+    const from = Math.max(0, B0.length - 1);
+    if (data[from].time !== B0[from].time && !(data[from].time > B0[from].time)) inc = false;
+    else {
+      for (let i = from; i < data.length; i++) ser.update(data[i]);
     }
+  }
+  if (!inc) ser.setData(data);
+  if (!inc && rk === RK && lr0 && P && P.tf === tf && P.U0 !== U[0]) {
+    const sh = bs(U, P.U0, U.length);
+    if (sh > 0) T.setVisibleLogicalRange({ from: lr0.from + sh, to: lr0.to + sh });
+  }
+  PST = { tf, A, st, cur, U0: U[0] };
+  B0 = data;
+  if (rk !== RK) {
+    RK = rk;
+    const lr = T.getVisibleLogicalRange();
+    if (!lr || lr.to < data.length - 1) toLatest();
   }
   B = { U, O, H, L, C, n: U.length, nDone, tfs: TFS[tf], A, k };
   S.price = C[C.length - 1];
@@ -349,6 +393,10 @@ async function render() {
   updMacd();
   updEma();
   $("clock").textContent = ds(cur) + " \u0628\u0631\u0644\u064A\u0646";
+  {
+    const sd = $("startDate");
+    if (sd && document.activeElement !== sd) sd.value = ds(cur).slice(0, 10);
+  }
   $("price").textContent = S.price.toFixed(2);
   updLines();
   updPos();
@@ -519,6 +567,11 @@ function updPos() {
     mgmtBind();
   }
   qUI();
+  {
+    const bc = $("bClose"), n = S.ps.length;
+    bc.disabled = !n;
+    bc.textContent = n > 1 ? "\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644 (" + n + ")" : "\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0635\u0641\u0642\u0629";
+  }
   updRisk();
 }
 function updRisk() {
@@ -1833,7 +1886,7 @@ $("bClr").onclick = () => {
 $("bSmc").onclick = () => $("smcPanel").classList.toggle("hidden");
 $("bBuy").onclick = () => openPos("buy");
 $("bSell").onclick = () => openPos("sell");
-$("bClose").onclick = () => closeAll();
+$("bClose").onclick = () => S.ps.slice().forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
 $("qBuy").onclick = () => openPos("buy", true);
 $("qSell").onclick = () => openPos("sell", true);
 $("qLot").onchange = () => {
@@ -2603,12 +2656,18 @@ function qUI() {
   const q = qPos(), w = $("qCW");
   if (!w) return;
   const on = q.length > 0;
-  w.classList.toggle("hidden", !on);
-  $("quick").classList.toggle("hasq", on);
+  w.classList.remove("hidden");
+  $("quick").classList.add("hasq");
+  w.classList.toggle("off", !on);
+  $("qClose").disabled = !on;
+  $("qMore").disabled = !on;
   if (!on) {
     qPopOpen = false;
     $("qPop").classList.add("hidden");
     $("qPop")._h = "";
+    $("qPL").textContent = "\u2014";
+    $("qPL").className = "";
+    $("qMore").textContent = "\u25BE";
     return;
   }
   const pl = q.reduce((a, p) => a + fpl(p), 0), L = qLatest(), lpl = fpl(L);
