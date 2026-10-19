@@ -477,12 +477,36 @@ function handles(d) {
   return h;
 }
 let dirty = 1, lastKey = "";
+const HIST = [];
+function snap() {
+  HIST.push(JSON.stringify(S.draw));
+  if (HIST.length > 50) HIST.shift();
+}
+function updUndo() {
+  const b = $("bUndo");
+  if (b) b.disabled = !(pend || HIST.length);
+}
+function undo() {
+  if (pend) {
+    if (pend.type === "chan" && pend.stage === 2) {
+      pend.stage = 1;
+      pend.b = pend.a;
+    } else pend = null;
+  } else if (HIST.length) {
+    S.draw = JSON.parse(HIST.pop());
+    drag = null;
+    save();
+  }
+  dirty++;
+  updUndo();
+}
 function draw() {
   if (document.hidden) return setTimeout(() => requestAnimationFrame(draw), 500);
   const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
   const key = B ? [w, h, dirty, XI(0), XI(B.n - 1), Y(S.price), Y(S.price * 1.01), mode, S.draw.length, JSON.stringify(pend), drag ? JSON.stringify(S.draw) : ""].join("|") : "x" + dirty;
   if (key === lastKey) return requestAnimationFrame(draw);
   lastKey = key;
+  updUndo();
   if (cv.width !== w * dpr || cv.height !== h * dpr) {
     cv.width = w * dpr;
     cv.height = h * dpr;
@@ -601,12 +625,14 @@ cv.addEventListener("pointerdown", (e) => {
   if (q.t == null || q.p == null) return;
   e.preventDefault();
   if (mode === "hline") {
+    snap();
     S.draw.push({ type: "hline", a: { t: q.t, p: q.p } });
     save();
   } else if (mode === "tline") {
     if (!pend) pend = { type: "tline", a: q, b: q };
     else {
       pend.b = { t: q.t, p: q.p };
+      snap();
       S.draw.push(pend);
       pend = null;
       save();
@@ -619,6 +645,7 @@ cv.addEventListener("pointerdown", (e) => {
     } else {
       pend.off = q.p - lineP(pend.a, pend.b, q.t);
       delete pend.stage;
+      snap();
       S.draw.push(pend);
       pend = null;
       save();
@@ -626,6 +653,7 @@ cv.addEventListener("pointerdown", (e) => {
   } else if (mode === "del") {
     const i = hitDraw(q);
     if (i >= 0) {
+      snap();
       S.draw.splice(i, 1);
       save();
     }
@@ -633,6 +661,7 @@ cv.addEventListener("pointerdown", (e) => {
     const pw = cv.clientWidth - 60;
     for (const d of S.draw) for (const [k, t, p] of handles(d)) {
       if (Math.hypot((d.type === "hline" ? pw - 20 : X(t)) - q.x, Y(p) - q.y) < 22) {
+        snap();
         drag = { d, k };
         cv.setPointerCapture(e.pointerId);
         return;
@@ -849,8 +878,10 @@ $("tf").onchange = async () => {
   save();
 };
 document.querySelectorAll("#draw [data-m]").forEach((b) => b.onclick = () => setMode(b.dataset.m));
+$("bUndo").onclick = undo;
 $("bClr").onclick = () => {
   if (confirm("\u0645\u0633\u062D \u0643\u0644 \u0627\u0644\u0631\u0633\u0648\u0645\u0627\u062A\u061F")) {
+    if (S.draw.length) snap();
     S.draw = [];
     save();
   }

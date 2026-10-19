@@ -141,10 +141,13 @@ function segs(d){if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}
  if(d.type==='chan')s.push([{t:d.a.t,p:d.a.p+d.off},{t:d.b.t,p:d.b.p+d.off}]);return s;}
 function handles(d){if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
  if(d.type==='chan'){const m=(d.a.t+d.b.t)/2;h.push(['c',m,lineP(d.a,d.b,m)+d.off])}return h;}
-let dirty=1,lastKey='';
+let dirty=1,lastKey='';const HIST=[];
+function snap(){HIST.push(JSON.stringify(S.draw));if(HIST.length>50)HIST.shift()}
+function updUndo(){const b=$('bUndo');if(b)b.disabled=!(pend||HIST.length)}
+function undo(){if(pend){if(pend.type==='chan'&&pend.stage===2){pend.stage=1;pend.b=pend.a}else pend=null}else if(HIST.length){S.draw=JSON.parse(HIST.pop());drag=null;save()}dirty++;updUndo()}
 function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(draw),500);const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
  const key=B?[w,h,dirty,XI(0),XI(B.n-1),Y(S.price),Y(S.price*1.01),mode,S.draw.length,JSON.stringify(pend),drag?JSON.stringify(S.draw):''].join('|'):'x'+dirty;
- if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;
+ if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;updUndo();
  if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr}
  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);if(!B)return requestAnimationFrame(draw);
  const pw=w-60;cx.save();cx.beginPath();cx.rect(0,0,pw,h);cx.clip();
@@ -174,13 +177,13 @@ function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(d
 function dSeg(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,L=dx*dx+dy*dy||1;let u=((px-x1)*dx+(py-y1)*dy)/L;u=Math.max(0,Math.min(1,u));return Math.hypot(px-x1-u*dx,py-y1-u*dy)}
 function hitDraw(q){for(let i=S.draw.length-1;i>=0;i--){const d=S.draw[i];for(const [a,b] of segs(d)){const x1=d.type==='hline'?0:X(a.t),x2=d.type==='hline'?9999:X(b.t);if(dSeg(q.x,q.y,x1,Y(a.p),x2,Y(b.p))<16)return i}}return -1}
 cv.addEventListener('pointerdown',e=>{if(!B)return;const q=pt(e);if(q.t==null||q.p==null)return;e.preventDefault();
- if(mode==='hline'){S.draw.push({type:'hline',a:{t:q.t,p:q.p}});save();}
- else if(mode==='tline'){if(!pend)pend={type:'tline',a:q,b:q};else{pend.b={t:q.t,p:q.p};S.draw.push(pend);pend=null;save()}}
+ if(mode==='hline'){snap();S.draw.push({type:'hline',a:{t:q.t,p:q.p}});save();}
+ else if(mode==='tline'){if(!pend)pend={type:'tline',a:q,b:q};else{pend.b={t:q.t,p:q.p};snap();S.draw.push(pend);pend=null;save()}}
  else if(mode==='chan'){if(!pend)pend={type:'chan',a:q,b:q,off:0,stage:1};else if(pend.stage===1){pend.b={t:q.t,p:q.p};pend.stage=2}
-  else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;S.draw.push(pend);pend=null;save()}}
- else if(mode==='del'){const i=hitDraw(q);if(i>=0){S.draw.splice(i,1);save()}}
+  else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;snap();S.draw.push(pend);pend=null;save()}}
+ else if(mode==='del'){const i=hitDraw(q);if(i>=0){snap();S.draw.splice(i,1);save()}}
  else if(mode==='edit'){const pw=cv.clientWidth-60;
-  for(const d of S.draw)for(const [k,t,p] of handles(d)){if(Math.hypot((d.type==='hline'?pw-20:X(t))-q.x,Y(p)-q.y)<22){drag={d,k};cv.setPointerCapture(e.pointerId);return}}
+  for(const d of S.draw)for(const [k,t,p] of handles(d)){if(Math.hypot((d.type==='hline'?pw-20:X(t))-q.x,Y(p)-q.y)<22){snap();drag={d,k};cv.setPointerCapture(e.pointerId);return}}
   for(const k of ['sl','tp']){const v=S.pos?S.pos[k]:num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};cv.setPointerCapture(e.pointerId);return}}}});
 cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null)return;
  if(pend&&pend.stage!==2&&mode!=='none'){pend.b={t:q.t,p:q.p}}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t)}
@@ -231,7 +234,8 @@ const tfBtns=()=>document.querySelectorAll('.tfb').forEach(b=>b.classList.toggle
 document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.tf)return;$('tf').value=b.dataset.tf;$('tf').onchange()});
 $('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
-$('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){S.draw=[];save()}};
+$('bUndo').onclick=undo;
+$('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save()}};
 $('bSmc').onclick=()=>$('smcPanel').classList.toggle('hidden');
 $('bBuy').onclick=()=>openPos('buy');$('bSell').onclick=()=>openPos('sell');
 $('bClose').onclick=()=>{if(S.pos)closePos(S.price,'يدوي')};
