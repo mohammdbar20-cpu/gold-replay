@@ -197,3 +197,4 @@ body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
 #csTimer{font-weight:800;color:#fca5a5}
 .egrid b,.ser-bar b,.cs-res,.pitem b{unicode-bidi:plaintext}.egrid b{display:inline-block;direction:ltr}
 .mbar{direction:ltr}
+.pitem,#pos,#acct{overflow-wrap:anywhere;max-width:100%}
