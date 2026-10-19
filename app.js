@@ -285,8 +285,14 @@ function macdUI() {
   $("mS").value = m.s;
   $("mG").value = m.g;
 }
+let RG = 0, RK = "";
+function toLatest() {
+  const T = chart.timeScale();
+  T.scrollToPosition(T.options().rightOffset, false);
+}
 async function render() {
-  const tf = S.tf, cur = S.cur, A = await tfBars(tf, cur);
+  const g = ++RG, tf = S.tf, cur = S.cur, A = await tfBars(tf, cur);
+  if (g !== RG) return;
   let k = bs(A.t, cur, A.n);
   if (k < 0) k = 0;
   const st = Math.max(0, k - WIN), U = [], data = [], O = [], H = [], L = [], C = [];
@@ -298,6 +304,7 @@ async function render() {
     C.push(A.c[i]);
   }
   const M = await m1(A.t[k], cur);
+  if (g !== RG) return;
   let fo = null, fh = -1e9, fl = 1e9, fc = null;
   for (let i = 0; i < M.n; i++) {
     const t = M.t[i];
@@ -318,6 +325,14 @@ async function render() {
   for (let i = 0; i < U.length; i++) data.push({ time: U[i] + off(U[i]), open: O[i], high: H[i], low: L[i], close: C[i] });
   ser.setData(data);
   B0 = data;
+  {
+    const rk = tf + "|" + cur;
+    if (rk !== RK) {
+      RK = rk;
+      const lr = chart.timeScale().getVisibleLogicalRange();
+      if (!lr || lr.to < data.length - 1) toLatest();
+    }
+  }
   B = { U, O, H, L, C, n: U.length, nDone, tfs: TFS[tf], A, k };
   S.price = C[C.length - 1];
   B.smc = S.smc.on ? computeSMC(B) : null;
@@ -1470,7 +1485,7 @@ async function init() {
   renderJournal();
   costUI();
   requestAnimationFrame(draw);
-  ts.scrollToRealTime();
+  toLatest();
 }
 async function stepBack(auto) {
   if (Q) return;
@@ -1611,7 +1626,7 @@ $("tf").onchange = async () => {
   S.tf = $("tf").value;
   tfBtns();
   await render();
-  ts.scrollToRealTime();
+  toLatest();
   save();
 };
 document.querySelectorAll("#draw [data-m]").forEach((b) => b.onclick = () => setMode(b.dataset.m));
@@ -1852,7 +1867,10 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { coach: () => coachData(), ema: () => emaSer ? emaSer.map((x) => {
+window.GR = { coach: () => coachData(), vis: () => {
+  const d = ser.data(), l = d[d.length - 1], lr = ts.getVisibleLogicalRange(), vr = ts.getVisibleRange();
+  return { n: d.length, lastT: l ? l.time - off(B.U[B.n - 1]) : null, lastC: l ? l.close : null, cur: S.cur, curBar: B.U[B.n - 1], bucket: B.A.t[B.k], nextB: B.A.t[B.k + 1] || null, price: S.price, hdr: $("price").textContent, lr: lr && [lr.from, lr.to], vrTo: vr && vr.to, lastTime: l && l.time };
+}, ema: () => emaSer ? emaSer.map((x) => {
   const d = x.data().filter((p) => p.value != null);
   return { n: d.length, last: d[d.length - 1] };
 }) : null, get sty() {
@@ -2513,7 +2531,7 @@ async function courseExit() {
   updPos();
   updLines();
   dirty++;
-  ts.scrollToRealTime();
+  toLatest();
 }
 function courseMap(openMod) {
   const lv = CRS.gamification.graduation.levels;
@@ -2578,7 +2596,7 @@ async function showItemChart(e) {
   mPrev = null;
   emaPrev = null;
   await render();
-  ts.scrollToRealTime();
+  toLatest();
   dirty++;
 }
 async function itemStart(mi, i, boss) {

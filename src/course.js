@@ -24,7 +24,7 @@ async function courseOpen(){stopPlay();if(Q){Q=null;quizUI()}
 async function courseExit(){stopPlay();window.__course=false;window.__courseStep=false;document.body.classList.remove('course','course-step');$('courseView').classList.add('hidden');$('cSheet').classList.add('hidden');
  if(CMAIN){const o=JSON.parse(CMAIN);Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,o);CMAIN=null}
  sel=-1;pend=null;mode='none';setMode('none');select(-1);$('tf').value=S.tf;tfBtns();applyScale();macdUI();emaUI();mPrev=null;emaPrev=null;
- await render();renderJournal();updPos();updLines();dirty++;ts.scrollToRealTime();}
+ await render();renderJournal();updPos();updLines();dirty++;toLatest();}
 // ---------- map ----------
 function courseMap(openMod){const lv=CRS.gamification.graduation.levels;const passed=CRS.modules.filter(modPassed).length;
  const curLevel=CRS.modules.reduce((a,m)=>modPassed(m)?m.level:a,0);
@@ -49,7 +49,7 @@ function learnMore(mi){const m=CRS.modules[mi];let h='<div class="cv-top"><butto
  $('courseView').innerHTML=h+'</div>';$('cvBk').onclick=()=>courseMap(mi);}
 // ---------- item play ----------
 async function showItemChart(e){S.draw=[];S.ps=[];S.tf=e.tf;$('tf').value=e.tf;tfBtns();sel=-1;pend=null;
- const c=await lastM1Before(e.start_ts+TFS[e.tf]);S.cur=c==null?e.start_ts:c;mPrev=null;emaPrev=null;await render();ts.scrollToRealTime();dirty++;}
+ const c=await lastM1Before(e.start_ts+TFS[e.tf]);S.cur=c==null?e.start_ts:c;mPrev=null;emaPrev=null;await render();toLatest();dirty++;}
 async function itemStart(mi,i,boss){const m=CRS.modules[mi],e=boss?m.boss.items[i]:m.path[i];CITEM={e,mi,i,boss:!!boss,tries:(CP.done[e.id]||{}).tries||0};
  CP.cur={m:mi,i,boss:!!boss};cpSave();$('courseView').classList.add('hidden');
  if(e.task==='trade_series')return seriesStart();

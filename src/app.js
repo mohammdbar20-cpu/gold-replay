@@ -79,17 +79,20 @@ function updMacd(force){const m=S.macd;if(!m||!m.on||!B)return;macdInit();
   mH.setData(hs);mM.setData(ms);mS.setData(ss);}
  mPrev={key,n};const r=chart.timeScale().getVisibleLogicalRange();if(r)MC.timeScale().setVisibleLogicalRange(r);}
 function macdUI(){const m=S.macd;$('bMacd').classList.toggle('on',m.on);$('macd').classList.toggle('hidden',!m.on);document.body.classList.toggle('macd-on',m.on);$('mF').value=m.f;$('mS').value=m.s;$('mG').value=m.g;}
+let RG=0,RK='';
+function toLatest(){const T=chart.timeScale();T.scrollToPosition(T.options().rightOffset,false)}
 async function render(){
- const tf=S.tf,cur=S.cur,A=await tfBars(tf,cur);
+ const g=++RG,tf=S.tf,cur=S.cur,A=await tfBars(tf,cur);if(g!==RG)return;
  let k=bs(A.t,cur,A.n);if(k<0)k=0;
  const st=Math.max(0,k-WIN),U=[],data=[],O=[],H=[],L=[],C=[];
  for(let i=st;i<k;i++){U.push(A.t[i]);O.push(A.o[i]);H.push(A.h[i]);L.push(A.l[i]);C.push(A.c[i]);}
- const M=await m1(A.t[k],cur);let fo=null,fh=-1e9,fl=1e9,fc=null;
+ const M=await m1(A.t[k],cur);if(g!==RG)return;let fo=null,fh=-1e9,fl=1e9,fc=null;
  for(let i=0;i<M.n;i++){const t=M.t[i];if(t<A.t[k]||t>cur)continue;if(fo===null)fo=M.o[i];fh=Math.max(fh,M.h[i]);fl=Math.min(fl,M.l[i]);fc=M.c[i];}
  const nDone=U.length;
  if(fo!==null){U.push(A.t[k]);O.push(fo);H.push(fh);L.push(fl);C.push(fc);}
  for(let i=0;i<U.length;i++)data.push({time:U[i]+off(U[i]),open:O[i],high:H[i],low:L[i],close:C[i]});
  ser.setData(data);B0=data;
+ {const rk=tf+'|'+cur;if(rk!==RK){RK=rk;const lr=chart.timeScale().getVisibleLogicalRange();if(!lr||lr.to<data.length-1)toLatest();}}
  B={U,O,H,L,C,n:U.length,nDone,tfs:TFS[tf],A,k};
  S.price=C[C.length-1];
  B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();updEma();
@@ -354,7 +357,7 @@ async function init(){
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
- renderJournal();costUI();requestAnimationFrame(draw);ts.scrollToRealTime();}
+ renderJournal();costUI();requestAnimationFrame(draw);toLatest();}
 // ---------- step back one day ----------
 async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50))}if(busy)return;busy=true;try{
  const first=Date.parse(MAN.first)/1000;let T;
@@ -391,7 +394,7 @@ const revTick=()=>stepBack('bar');
 $('bRev').onclick=()=>{if(revT)return stopPlay();if(Q)return;stopPlay();$('bRev').textContent='⏸';$('bRev').classList.add('playing');revT=setInterval(revTick,+$('speed').value)};
 const tfBtns=()=>document.querySelectorAll('.tfb').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
 document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.tf)return;$('tf').value=b.dataset.tf;$('tf').onchange()});
-$('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
+$('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();toLatest();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('bUndo').onclick=undo;
 $('bEma').onclick=()=>{S.ema.on=!S.ema.on;emaUI();save();updEma(true)};
@@ -442,7 +445,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={coach:()=>coachData(),ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={coach:()=>coachData(),vis:()=>{const d=ser.data(),l=d[d.length-1],lr=ts.getVisibleLogicalRange(),vr=ts.getVisibleRange();return {n:d.length,lastT:l?l.time-off(B.U[B.n-1]):null,lastC:l?l.close:null,cur:S.cur,curBar:B.U[B.n-1],bucket:B.A.t[B.k],nextB:B.A.t[B.k+1]||null,price:S.price,hdr:$('price').textContent,lr:lr&&[lr.from,lr.to],vrTo:vr&&vr.to,lastTime:l&&l.time}},ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
