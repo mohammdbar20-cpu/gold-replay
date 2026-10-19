@@ -1,7 +1,11 @@
 <!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>إعادة تشغيل الذهب XAUUSD</title>
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>(function(){function show(m){try{var b=document.getElementById('errBox');if(!b){b=document.createElement('div');b.id='errBox';b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#a00;color:#fff;padding:10px;font:14px Tahoma,Arial;direction:rtl;white-space:pre-wrap;max-height:40vh;overflow:auto';(document.body||document.documentElement).appendChild(b);}b.textContent+= '⚠️ خطأ في التطبيق: '+m+'\n';}catch(e){}}
+window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+')');};
+window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
+<script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
+<script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
 <link rel="stylesheet" href="style.css"></head><body>
 <header><b>🟡 تدريب الذهب</b> <span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas></div>
@@ -52,4 +56,4 @@
 <div class="panel"><h3>سجل الصفقات</h3>
  <div class="row"><button id="bCsv">تصدير CSV</button><button id="bJson">تصدير JSON</button><label class="btn">استيراد<input type="file" id="imp" accept=".json,.csv" hidden></label><button id="bWipe">حذف السجل</button></div>
  <div id="journal"></div></div>
-<script src="app.js"></script></body></html>
+<script src="app.js?v=2"></script></body></html>

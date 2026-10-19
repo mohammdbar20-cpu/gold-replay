@@ -1,8 +1,8 @@
-*{box-sizing:border-box}body{margin:0;background:#000;color:#ddd;font-family:Tahoma,Arial,sans-serif;font-size:15px}
+*{box-sizing:border-box}html{background:#000}body{margin:0;background:#000;color:#ddd;font-family:Tahoma,Arial,sans-serif;font-size:15px}
 header{padding:6px 8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#111}
 #price{color:#9afc41;font-weight:bold}#status{color:#fc0}
-#chartWrap{position:relative;height:56vh;min-height:300px}#chart{position:absolute;inset:0}
-#ov{position:absolute;inset:0;pointer-events:none;z-index:5}#ov.active{pointer-events:auto;touch-action:none}
+#chartWrap{position:relative;width:100%;height:320px;height:calc(100vh - 170px);min-height:300px;max-height:75vh}#chart,#ov{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%}
+#ov{pointer-events:none;z-index:5}#ov.active{pointer-events:auto;touch-action:none}
 .row{display:flex;flex-wrap:wrap;gap:6px;padding:4px 6px;align-items:center}
 button,select,.btn{min-height:44px;min-width:44px;padding:6px 12px;font-size:16px;background:#222;color:#eee;border:1px solid #444;border-radius:8px}
 button.on{background:#9afc41;color:#000}.buy{background:#1d5e1d}.sell{background:#7a1d1d}
