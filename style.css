@@ -240,3 +240,7 @@ html[lang=de] #quick.hasq .big{font-size:14px;padding:0 3px;letter-spacing:-.2px
 /* course on desktop: the sheet sits on the physical right; reserve that space (not inline-end, which flips in RTL and pushed the chart off-screen) */
 @media (min-width:900px){body.course #chartWrap,body.course #macd{margin-inline-end:0!important;margin-left:0!important;margin-right:400px!important;min-width:0;width:auto!important}
  body.course #app{grid-template-rows:auto minmax(0,1fr) auto auto auto}}
+
+/* reading test: hide only the exact answer (header price + last-value tag); axis + crosshair stay */
+body.cs-hideprice #price{visibility:hidden}
+@media (min-width:900px){body.course.macd-on #chartWrap{height:calc(100vh - 70px - 150px)!important}}

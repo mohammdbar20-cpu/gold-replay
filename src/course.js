@@ -21,7 +21,7 @@ async function courseOpen(){stopPlay();if(Q){Q=null;quizUI()}
  if(!window.__course){CMAIN=JSON.stringify(S);window.__course=true;document.body.classList.add('course');}
  cpLoad();$('courseView').classList.remove('hidden');$('cSheet').classList.add('hidden');$('courseView').innerHTML='<div class="cv-load">…</div>';
  await courseLoad();courseMap();}
-async function courseExit(){stopPlay();window.__course=false;window.__courseStep=false;document.body.classList.remove('course','course-step');$('courseView').classList.add('hidden');$('cSheet').classList.add('hidden');
+async function courseExit(){answerHidden(false);requestAnimationFrame(fitCharts);stopPlay();window.__course=false;window.__courseStep=false;document.body.classList.remove('course','course-step');$('courseView').classList.add('hidden');$('cSheet').classList.add('hidden');
  if(CMAIN){const o=JSON.parse(CMAIN);Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,o);CMAIN=null}
  sel=-1;pend=null;mode='none';setMode('none');select(-1);$('tf').value=S.tf;tfBtns();applyScale();macdUI();emaUI();mPrev=null;emaPrev=null;
  await render();renderJournal();updPos();updLines();dirty++;toLatest();}
@@ -48,7 +48,8 @@ function learnMore(mi){const m=CRS.modules[mi];let h='<div class="cv-top"><butto
  (m.lessons_reference||[]).forEach(l=>{h+='<div class="cv-card"><h4>'+TX(l.title)+'</h4>'+(l.objectives?'<ul>'+(l.objectives[L_()]||[]).map(x=>'<li>'+x+'</li>').join('')+'</ul>':'')+'<p>'+TX(l.text)+'</p>'+(l.key_points?'<b>✔</b><ul>'+(l.key_points[L_()]||[]).map(x=>'<li>'+x+'</li>').join('')+'</ul>':'')+(l.common_mistakes?'<b>⚠</b><ul>'+(l.common_mistakes[L_()]||[]).map(x=>'<li>'+x+'</li>').join('')+'</ul>':'')+'</div>'});
  $('courseView').innerHTML=h+'</div>';$('cvBk').onclick=()=>courseMap(mi);}
 // ---------- item play ----------
-async function showItemChart(e){S.draw=[];S.ps=[];S.tf=e.tf;$('tf').value=e.tf;tfBtns();sel=-1;pend=null;
+function answerHidden(h){ser.applyOptions({lastValueVisible:!h});document.body.classList.toggle('cs-hideprice',!!h)}
+async function showItemChart(e){answerHidden(e.task==='read_price');requestAnimationFrame(fitCharts);S.draw=[];S.ps=[];S.tf=e.tf;$('tf').value=e.tf;tfBtns();sel=-1;pend=null;
  const c=await lastM1Before(e.start_ts+TFS[e.tf]);S.cur=c==null?e.start_ts:c;mPrev=null;emaPrev=null;await render();toLatest();dirty++;}
 async function itemStart(mi,i,boss){const m=CRS.modules[mi],e=boss?m.boss.items[i]:m.path[i];CITEM={e,mi,i,boss:!!boss,tries:(CP.done[e.id]||{}).tries||0};
  CP.cur={m:mi,i,boss:!!boss};cpSave();$('courseView').classList.add('hidden');
@@ -132,7 +133,7 @@ async function submitItem(timeout){clearInterval(bossTimer);const e=CITEM.e;cons
  dirty++;sheetReveal(sc,stars,xp,timeout);}
 function cardHtml(c){if(!c)return '';if(c.ref&&!c.title)c=cardMap[c.lesson]||c;if(!c.title)return '';
  return '<div class="cv-card concept"><h4>🧠 '+TX(c.title)+'</h4><ul>'+((c.lines&&c.lines[L_()])||[]).map(x=>'<li>'+x+'</li>').join('')+'</ul>'+(c.watch_out?'<div class="cv-watch">⚠ '+TX(c.watch_out)+'</div>':'')+(c.more?'<details><summary>المزيد</summary><p>'+TX(c.more)+'</p></details>':'')+'</div>';}
-function sheetReveal(sc,stars,xp,timeout){const e=CITEM.e,r=e.reveal||{},pct=Math.round(sc*100);
+function sheetReveal(sc,stars,xp,timeout){answerHidden(false);const e=CITEM.e,r=e.reveal||{},pct=Math.round(sc*100);
  let h='<div class="cs-head"><button id="csMap" class="cv-x">✕</button><span class="cs-res '+(sc>=1?'ok':sc>0?'mid':'bad')+'">'+(sc>=1?'✅ ممتاز':sc>0?'🟡 جزئياً':'❌ ليس هذه المرة')+' · '+pct+'%</span>'+(CITEM.boss?'':'<span class="cs-stars">'+'★'.repeat(stars)+'☆'.repeat(3-stars)+'</span><span class="cs-xp">+'+xp+' XP</span>')+'</div>';
  if(timeout)h+='<div class="small">⏱ انتهى الوقت</div>';
  h+='<div class="cs-expl">📘 '+TX(r.explanation)+'</div>'+cardHtml(r.concept_card)+(r.extra_cards||[]).map(cardHtml).join('');

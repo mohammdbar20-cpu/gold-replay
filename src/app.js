@@ -48,8 +48,13 @@ function setJournal(j){localStorage.setItem('gr_journal',JSON.stringify(j));}
 // ---------- chart ----------
 const chart=LightweightCharts.createChart($('chart'),{layout:{background:{color:'#000'},textColor:'#bbb'},
  grid:{vertLines:{visible:false},horzLines:{visible:false}},rightPriceScale:{borderColor:'#333',minimumWidth:66},
- timeScale:{borderColor:'#333',timeVisible:true,rightOffset:8},crosshair:{mode:0},autoSize:true});
+ timeScale:{borderColor:'#333',timeVisible:true,rightOffset:8},crosshair:{mode:0},autoSize:false,width:$('chart').clientWidth||600,height:$('chart').clientHeight||400});
 const ser=chart.addCandlestickSeries({upColor:'#9afc41',downColor:'#9c9c9c',borderUpColor:'#9c9c9c',borderDownColor:'#9c9c9c',wickUpColor:'#9c9c9c',wickDownColor:'#9c9c9c',priceFormat:{type:'price',precision:2,minMove:0.01}});
+// explicit sizing (instead of autoSize): works in every browser and is re-checked on layout changes (course sheet, panels, resize)
+const SZ=new Map();function fitEl(c,el){if(!c||!el)return;const w=Math.floor(el.clientWidth),h=Math.floor(el.clientHeight);if(!w||!h)return;const o=SZ.get(c);if(o&&o[0]===w&&o[1]===h)return;SZ.set(c,[w,h]);c.resize(w,h)}
+function fitCharts(){fitEl(chart,$('chart'));if(typeof MC!=='undefined'&&MC)fitEl(MC,$('macdC'))}
+if(window.ResizeObserver){const ro=new ResizeObserver(()=>fitCharts());ro.observe($('chart'));setTimeout(()=>{if($('macdC'))ro.observe($('macdC'))},0)}
+window.addEventListener('resize',fitCharts);
 chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!r)return;candleStyle();if(r.from<40&&B&&!extBusy)setTimeout(moreHistory,0)});
 let plines=[],B0=null;
 // ---------- MACD pane (revealed candles only) ----------
@@ -69,7 +74,7 @@ function updEma(force){const m=S.ema;if(!m||!B)return;
 function emaUI(){const m=S.ema;$('bEma').classList.toggle('on',m.on);$('emaLeg').classList.toggle('hidden',!m.on);['e1','e2','e3'].forEach((id,i)=>$(id).value=m.p[i]);}
 let MC=null,mH,mM,mS,mPrev=null;
 function macdInit(){if(MC)return;MC=LightweightCharts.createChart($('macdC'),{layout:{background:{color:'#000'},textColor:'#888'},grid:{vertLines:{visible:false},horzLines:{color:'#111'}},
-  rightPriceScale:{borderColor:'#333',minimumWidth:66},timeScale:{visible:false,rightOffset:8},crosshair:{mode:0},autoSize:true,handleScroll:false,handleScale:false});
+  rightPriceScale:{borderColor:'#333',minimumWidth:66},timeScale:{visible:false,rightOffset:8},crosshair:{mode:0},autoSize:false,width:$('macdC').clientWidth||600,height:$('macdC').clientHeight||150,handleScroll:false,handleScale:false});
  mH=MC.addHistogramSeries({priceLineVisible:false,lastValueVisible:false});mM=MC.addLineSeries({color:'#4aa3ff',lineWidth:1,priceLineVisible:false});mS=MC.addLineSeries({color:'#ff9800',lineWidth:1,priceLineVisible:false});
  chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r&&MC&&S.macd&&S.macd.on)MC.timeScale().setVisibleLogicalRange(r)});}
 function macdCalc(C,f,sl,sg){const n=C.length,M=new Array(n),Sg=new Array(n),kf=2/(f+1),ks=2/(sl+1),kg=2/(sg+1);let ef=C[0],es=C[0],eg=0;
@@ -93,7 +98,7 @@ let thinMode=null;function candleStyle(){const sp=chart.timeScale().options().ba
  ser.applyOptions(thin?{wickUpColor:'#9afc41',borderUpColor:'#9afc41'}:{wickUpColor:'#9c9c9c',borderUpColor:'#9c9c9c'})}
 function toLatest(){const T=chart.timeScale();T.scrollToPosition(T.options().rightOffset,false)}
 async function render(){
- const g=++RG,tf=S.tf,cur=S.cur,A=await tfBars(tf,cur);if(g!==RG)return;
+ fitCharts();const g=++RG,tf=S.tf,cur=S.cur,A=await tfBars(tf,cur);if(g!==RG)return;
  let k=bs(A.t,cur,A.n);if(k<0)k=0;
  const win=tf==='D1'?1e9:WIN+(EXT[tf]||0);let st=Math.max(0,k-win);
  // keep the window start fixed while it stays within 300 bars of the target, so play can append incrementally

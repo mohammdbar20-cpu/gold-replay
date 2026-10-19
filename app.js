@@ -174,9 +174,33 @@ const chart = LightweightCharts.createChart($("chart"), {
   rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
   timeScale: { borderColor: "#333", timeVisible: true, rightOffset: 8 },
   crosshair: { mode: 0 },
-  autoSize: true
+  autoSize: false,
+  width: $("chart").clientWidth || 600,
+  height: $("chart").clientHeight || 400
 });
 const ser = chart.addCandlestickSeries({ upColor: "#9afc41", downColor: "#9c9c9c", borderUpColor: "#9c9c9c", borderDownColor: "#9c9c9c", wickUpColor: "#9c9c9c", wickDownColor: "#9c9c9c", priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
+const SZ = /* @__PURE__ */ new Map();
+function fitEl(c, el) {
+  if (!c || !el) return;
+  const w = Math.floor(el.clientWidth), h = Math.floor(el.clientHeight);
+  if (!w || !h) return;
+  const o = SZ.get(c);
+  if (o && o[0] === w && o[1] === h) return;
+  SZ.set(c, [w, h]);
+  c.resize(w, h);
+}
+function fitCharts() {
+  fitEl(chart, $("chart"));
+  if (typeof MC !== "undefined" && MC) fitEl(MC, $("macdC"));
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => fitCharts());
+  ro.observe($("chart"));
+  setTimeout(() => {
+    if ($("macdC")) ro.observe($("macdC"));
+  }, 0);
+}
+window.addEventListener("resize", fitCharts);
 chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
   if (!r) return;
   candleStyle();
@@ -235,7 +259,9 @@ function macdInit() {
     rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
     timeScale: { visible: false, rightOffset: 8 },
     crosshair: { mode: 0 },
-    autoSize: true,
+    autoSize: false,
+    width: $("macdC").clientWidth || 600,
+    height: $("macdC").clientHeight || 150,
     handleScroll: false,
     handleScale: false
   });
@@ -330,6 +356,7 @@ function toLatest() {
   T.scrollToPosition(T.options().rightOffset, false);
 }
 async function render() {
+  fitCharts();
   const g = ++RG, tf = S.tf, cur = S.cur, A = await tfBars(tf, cur);
   if (g !== RG) return;
   let k = bs(A.t, cur, A.n);
@@ -2787,6 +2814,8 @@ async function courseOpen() {
   courseMap();
 }
 async function courseExit() {
+  answerHidden(false);
+  requestAnimationFrame(fitCharts);
   stopPlay();
   window.__course = false;
   window.__courseStep = false;
@@ -2868,7 +2897,13 @@ function learnMore(mi) {
   $("courseView").innerHTML = h + "</div>";
   $("cvBk").onclick = () => courseMap(mi);
 }
+function answerHidden(h) {
+  ser.applyOptions({ lastValueVisible: !h });
+  document.body.classList.toggle("cs-hideprice", !!h);
+}
 async function showItemChart(e) {
+  answerHidden(e.task === "read_price");
+  requestAnimationFrame(fitCharts);
   S.draw = [];
   S.ps = [];
   S.tf = e.tf;
@@ -3148,6 +3183,7 @@ function cardHtml(c) {
   return '<div class="cv-card concept"><h4>\u{1F9E0} ' + TX(c.title) + "</h4><ul>" + (c.lines && c.lines[L_()] || []).map((x) => "<li>" + x + "</li>").join("") + "</ul>" + (c.watch_out ? '<div class="cv-watch">\u26A0 ' + TX(c.watch_out) + "</div>" : "") + (c.more ? "<details><summary>\u0627\u0644\u0645\u0632\u064A\u062F</summary><p>" + TX(c.more) + "</p></details>" : "") + "</div>";
 }
 function sheetReveal(sc, stars, xp, timeout) {
+  answerHidden(false);
   const e = CITEM.e, r = e.reveal || {}, pct = Math.round(sc * 100);
   let h = '<div class="cs-head"><button id="csMap" class="cv-x">\u2715</button><span class="cs-res ' + (sc >= 1 ? "ok" : sc > 0 ? "mid" : "bad") + '">' + (sc >= 1 ? "\u2705 \u0645\u0645\u062A\u0627\u0632" : sc > 0 ? "\u{1F7E1} \u062C\u0632\u0626\u064A\u0627\u064B" : "\u274C \u0644\u064A\u0633 \u0647\u0630\u0647 \u0627\u0644\u0645\u0631\u0629") + " \xB7 " + pct + "%</span>" + (CITEM.boss ? "" : '<span class="cs-stars">' + "\u2605".repeat(stars) + "\u2606".repeat(3 - stars) + '</span><span class="cs-xp">+' + xp + " XP</span>") + "</div>";
   if (timeout) h += '<div class="small">\u23F1 \u0627\u0646\u062A\u0647\u0649 \u0627\u0644\u0648\u0642\u062A</div>';
