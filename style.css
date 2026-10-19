@@ -94,3 +94,38 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
 .lp-logo{font-size:22px;font-weight:800;color:#9afc41}.lp-t{color:#8b8b93;margin-bottom:6px}
 .lp-card button{min-height:56px;font-size:20px;font-weight:800;border-radius:999px}.lp-card button:first-of-type{background:#9afc41;color:#000;border:0}
 .chal{text-align:start}
+#ctrl{grid-template-columns:repeat(12,1fr)}
+#ctrl #bRev{grid-column:span 3;order:1}#ctrl #bPlay{grid-column:span 6;order:2}#ctrl #speed{grid-column:span 3;order:3}
+#ctrl #bBack{grid-column:span 4;order:4}#ctrl #bNext{grid-column:span 4;order:5}#ctrl #bDay{grid-column:span 4;order:6}
+#bRev{min-height:52px;border-radius:999px;font-weight:700;color:var(--g);border-color:rgba(154,252,65,.4)}#bRev.playing{background:#ffcc00;color:#000}
+@media (min-width:900px){#ctrl #bBack{order:1}#ctrl #bRev{order:2;min-height:40px}#ctrl #bPlay{order:3}#ctrl #bNext{order:4}#ctrl #bDay{order:5}#ctrl #speed{order:6}}
+
+#macd{order:1;position:relative;height:120px;border-top:1px solid #222;background:#000}#macdC{position:absolute;top:0;left:0;right:0;bottom:0}
+#macdHdr{position:absolute;top:2px;left:6px;z-index:3;font-size:11px;font-weight:700;color:#9c9c9c;display:flex;gap:3px;align-items:center}
+#macdHdr input{width:38px!important;padding:1px 3px;font-size:11px;min-height:0;border-radius:4px;background:rgba(0,0,0,.6)}
+body.macd-on #chartWrap{height:calc(100vh - 350px)}
+@media (min-width:900px){#app{grid-template-rows:auto minmax(0,1fr) auto auto;grid-template-areas:"top top top" "draw chart side" "draw macd side" "draw ctrl side"}#macd{grid-area:macd;height:150px}body.macd-on #chartWrap{height:auto}}
+.feelrow .feelb{flex:1;font-weight:700}.feelb.on{background:rgba(154,252,65,.14);border-color:#9afc41;color:#9afc41}.feelb[data-f=hesitant].on{background:rgba(255,204,0,.14);border-color:#fc0;color:#fc0}
+#quick{order:3;display:grid;grid-template-columns:1fr auto 1fr;gap:6px;direction:ltr}#quick>*{direction:var(--d)}
+#quick .big{min-height:52px;font-size:18px;font-weight:800;border-radius:999px;border:0}#quick #qBuy{background:#16a34a;color:#fff}#quick #qSell{background:#dc2626;color:#fff}
+#qLot{min-height:52px;border-radius:999px;font-weight:700}#quick .feelrow{grid-column:1/-1;padding:0}#acct{grid-column:1/-1;text-align:center;font-size:13px}
+.plist{display:flex;flex-direction:column;gap:4px}.pitem{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:600;font-size:13px}.pitem .pclose{margin-inline-start:auto;min-height:32px;padding:2px 10px;font-size:13px}
+#bCloseAll{margin-top:6px;width:100%;background:#4a1015;border-color:#8a2530}
+@media (min-width:900px){#app{grid-template-rows:auto minmax(0,1fr) auto auto auto;grid-template-areas:"top top top" "draw chart side" "draw macd side" "draw ctrl side" "draw quick side"}
+ #quick{grid-area:quick;display:flex;justify-content:center;flex-wrap:wrap;padding:6px 8px;background:var(--p1);border-top:1px solid var(--bd)}#quick .big{min-height:40px;min-width:120px;font-size:15px}#qLot{min-height:40px}
+ #quick .feelrow{width:auto}#acct{width:100%}}
+
+/* compact replay row (mobile) */
+@media (max-width:899px){
+ #ctrl{grid-template-columns:repeat(6,1fr);gap:5px;padding:5px 6px}
+ #ctrl>*{grid-column:span 1!important;min-height:44px!important;font-size:14px!important;padding:4px 2px!important}
+ #ctrl #bRev{order:1}#ctrl #bPlay{order:2;font-size:20px!important;box-shadow:none}#ctrl #bBack{order:3}#ctrl #bNext{order:4}#ctrl #bDay{order:5}#ctrl #speed{order:6}
+ #quick .big,#qLot{min-height:46px}#quick{padding:4px 6px;gap:5px}
+ #chartWrap{height:calc(100vh - 300px)}body.macd-on #chartWrap{height:calc(100vh - 420px)}
+}
+#bPlay.play,#bRev{font-size:20px}
+@media (min-width:900px){#bPlay.play{padding:0 18px;min-width:56px}#bRev{min-width:50px}}
+#stylePop{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:11;width:min(300px,94%);background:rgba(19,19,23,.98);border:1px solid #2a2a31;border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.6);direction:var(--d)}
+#stylePop .pal{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin:6px 0;direction:ltr}#stylePop .pc{min-width:0!important;min-height:0!important;height:28px;padding:0;border-radius:6px;border:2px solid rgba(255,255,255,.12)}
+#stylePop .pc.on{border-color:#fff;box-shadow:0 0 0 2px #9afc41}#stylePop .prow{display:flex;align-items:center;gap:5px;margin:4px 0}#stylePop .prow button{min-height:32px;min-width:36px;padding:2px 8px;font-size:14px}
+#stylePop input[type=range]{flex:1;accent-color:#9afc41}#sColor{font-size:14px}

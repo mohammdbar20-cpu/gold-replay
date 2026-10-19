@@ -158,13 +158,89 @@ function setJournal(j) {
 const chart = LightweightCharts.createChart($("chart"), {
   layout: { background: { color: "#000" }, textColor: "#bbb" },
   grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-  rightPriceScale: { borderColor: "#333" },
+  rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
   timeScale: { borderColor: "#333", timeVisible: true, rightOffset: 8 },
   crosshair: { mode: 0 },
   autoSize: true
 });
 const ser = chart.addCandlestickSeries({ upColor: "#9afc41", downColor: "#9c9c9c", borderUpColor: "#9c9c9c", borderDownColor: "#9c9c9c", wickUpColor: "#9c9c9c", wickDownColor: "#9c9c9c", priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
-let plines = [];
+let plines = [], B0 = null;
+let MC = null, mH, mM, mS, mPrev = null;
+function macdInit() {
+  if (MC) return;
+  MC = LightweightCharts.createChart($("macdC"), {
+    layout: { background: { color: "#000" }, textColor: "#888" },
+    grid: { vertLines: { visible: false }, horzLines: { color: "#111" } },
+    rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
+    timeScale: { visible: false, rightOffset: 8 },
+    crosshair: { mode: 0 },
+    autoSize: true,
+    handleScroll: false,
+    handleScale: false
+  });
+  mH = MC.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+  mM = MC.addLineSeries({ color: "#4aa3ff", lineWidth: 1, priceLineVisible: false });
+  mS = MC.addLineSeries({ color: "#ff9800", lineWidth: 1, priceLineVisible: false });
+  chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+    if (r && MC && S.macd && S.macd.on) MC.timeScale().setVisibleLogicalRange(r);
+  });
+}
+function macdCalc(C, f, sl, sg) {
+  const n = C.length, M = new Array(n), Sg = new Array(n), kf = 2 / (f + 1), ks = 2 / (sl + 1), kg = 2 / (sg + 1);
+  let ef = C[0], es = C[0], eg = 0;
+  for (let i = 0; i < n; i++) {
+    ef = i ? C[i] * kf + ef * (1 - kf) : C[i];
+    es = i ? C[i] * ks + es * (1 - ks) : C[i];
+    M[i] = ef - es;
+    eg = i ? M[i] * kg + eg * (1 - kg) : M[i];
+    Sg[i] = eg;
+  }
+  return { M, Sg };
+}
+function updMacd(force) {
+  const m = S.macd;
+  if (!m || !m.on || !B) return;
+  macdInit();
+  const C = B.C, n = B.n, { M, Sg } = macdCalc(C, m.f, m.s, m.g), warm = m.s;
+  const pt2 = (i, v) => ({ time: B0[i].time, value: v });
+  const H = (i) => ({ time: B0[i].time, value: M[i] - Sg[i], color: M[i] - Sg[i] >= 0 ? "#9afc41" : "#9c9c9c" });
+  const key = B.U[0] + ":" + m.f + m.s + m.g;
+  if (!force && mPrev && mPrev.key === key && (n === mPrev.n || n === mPrev.n + 1)) {
+    if (n > warm) {
+      mH.update(H(n - 1));
+      mM.update(pt2(n - 1, M[n - 1]));
+      mS.update(pt2(n - 1, Sg[n - 1]));
+    }
+  } else {
+    const hs = [], ms = [], ss = [];
+    for (let i = 0; i < n; i++) {
+      if (i < warm) {
+        hs.push({ time: B0[i].time });
+        ms.push({ time: B0[i].time });
+        ss.push({ time: B0[i].time });
+        continue;
+      }
+      hs.push(H(i));
+      ms.push(pt2(i, M[i]));
+      ss.push(pt2(i, Sg[i]));
+    }
+    mH.setData(hs);
+    mM.setData(ms);
+    mS.setData(ss);
+  }
+  mPrev = { key, n };
+  const r = chart.timeScale().getVisibleLogicalRange();
+  if (r) MC.timeScale().setVisibleLogicalRange(r);
+}
+function macdUI() {
+  const m = S.macd;
+  $("bMacd").classList.toggle("on", m.on);
+  $("macd").classList.toggle("hidden", !m.on);
+  document.body.classList.toggle("macd-on", m.on);
+  $("mF").value = m.f;
+  $("mS").value = m.s;
+  $("mG").value = m.g;
+}
 async function render() {
   const tf = S.tf, cur = S.cur, A = await tfBars(tf, cur);
   let k = bs(A.t, cur, A.n);
@@ -197,10 +273,12 @@ async function render() {
   }
   for (let i = 0; i < U.length; i++) data.push({ time: U[i] + off(U[i]), open: O[i], high: H[i], low: L[i], close: C[i] });
   ser.setData(data);
+  B0 = data;
   B = { U, O, H, L, C, n: U.length, nDone, tfs: TFS[tf], A, k };
   S.price = C[C.length - 1];
   B.smc = S.smc.on ? computeSMC(B) : null;
   dirty++;
+  updMacd();
   $("clock").textContent = ds(cur) + " \u0628\u0631\u0644\u064A\u0646";
   $("price").textContent = S.price.toFixed(2);
   updLines();
@@ -223,12 +301,12 @@ async function advance(to) {
     status("\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
     return false;
   }
-  if (S.pos) {
+  if (S.ps.some((p) => p.sl != null || p.tp != null)) {
     const M = await m1(S.cur + 60, to);
-    for (let i = 0; i < M.n; i++) {
+    for (let i = 0; i < M.n && S.ps.length; i++) {
       const t = M.t[i];
       if (t <= S.cur || t > to) continue;
-      if (checkHit(M, i)) break;
+      for (const p of S.ps.slice()) checkHit(M, i, p);
     }
   }
   S.cur = to;
@@ -253,12 +331,22 @@ const stepDay = () => doStep(async () => {
   const i = bs(M.t, S.cur + 86400, M.n);
   return i >= 0 ? M.t[i] : null;
 });
+let revT = null;
 function stopPlay() {
+  if (revT) {
+    clearInterval(revT);
+    revT = null;
+  }
+  const rb = $("bRev");
+  if (rb) {
+    rb.textContent = "\u25C0\uFE0F";
+    rb.classList.remove("playing");
+  }
   if (playT) {
     clearInterval(playT);
     playT = null;
   }
-  $("bPlay").textContent = "\u25B6\uFE0F \u062A\u0634\u063A\u064A\u0644";
+  $("bPlay").textContent = "\u25B6\uFE0F";
   $("bPlay").classList.remove("playing");
 }
 function status(s) {
@@ -271,68 +359,85 @@ const num = (id) => {
   const v = parseFloat($(id).value);
   return isFinite(v) ? v : null;
 };
-function checkHit(M, i) {
-  const p = S.pos, d = p.side === "buy" ? 1 : -1;
+function checkHit(M, i, p) {
+  const d = p.side === "buy" ? 1 : -1;
   const slHit = p.sl != null && (d > 0 ? M.l[i] <= p.sl : M.h[i] >= p.sl), tpHit = p.tp != null && (d > 0 ? M.h[i] >= p.tp : M.l[i] <= p.tp);
   if (slHit) {
-    closePos(p.sl, "SL", M.t[i]);
+    closePos(p.sl, "SL", M.t[i], p);
     return true;
   }
   if (tpHit) {
-    closePos(p.tp, "TP", M.t[i]);
+    closePos(p.tp, "TP", M.t[i], p);
     return true;
   }
   return false;
 }
-function openPos(side) {
+const PIP = 0.1;
+function openPos(side, quick) {
   stopPlay();
-  if (S.pos) return alert("\u0644\u062F\u064A\u0643 \u0635\u0641\u0642\u0629 \u0645\u0641\u062A\u0648\u062D\u0629");
-  const lots = num("lots");
+  const lots = quick ? S.qlot || 0.01 : num("lots");
   if (!lots || lots <= 0) return alert("\u0623\u062F\u062E\u0644 \u062D\u062C\u0645 \u0627\u0644\u0644\u0648\u062A");
-  const e = S.price, sl = num("sl"), tp = num("tp"), d = side === "buy" ? 1 : -1;
+  const e = S.price, sl = quick ? null : num("sl"), tp = quick ? null : num("tp"), d = side === "buy" ? 1 : -1;
   if (sl != null && (sl - e) * d >= 0) return alert("\u0648\u0642\u0641 \u0627\u0644\u062E\u0633\u0627\u0631\u0629 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
   if (tp != null && (tp - e) * d <= 0) return alert("\u0627\u0644\u0647\u062F\u0641 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
-  S.pos = { side, entry: e, sl, tp, lots, open: S.cur, tf: S.tf, why: $("why").value, feel: $("feel").value, bal0: S.balance, ctx: snapCtx() };
+  const p = { id: Date.now() + Math.floor(Math.random() * 1e3), side, entry: e, sl, tp, lots, open: S.cur, tf: S.tf, why: quick ? "" : $("why").value, feel: $("feel").value, conf: FEEL, bal0: S.balance, quick: !!quick, ctx: Object.assign(snapCtx(), { confidence: FEEL }) };
+  S.ps.push(p);
   save();
   updLines();
   updPos();
+  return p;
 }
-function closePos(px, reason, t) {
+function closePos(px, reason, t, p) {
   stopPlay();
+  p = p || S.ps[0];
+  if (!p) return;
+  const tc = t || S.cur;
   if (S.draw) S.draw.forEach((d2) => {
-    if (d2.type === "pos" && d2.st === "live") {
+    if (d2.type === "pos" && d2.st === "live" && (d2.posId == null || d2.posId === p.id)) {
       d2.st = "done";
       d2.res = reason;
-      d2.t2 = Math.max(d2.t2, t || S.cur);
+      d2.t2 = Math.max(d2.t2, tc);
     }
   });
-  const p = S.pos;
-  if (!p) return;
-  const d = p.side === "buy" ? 1 : -1;
-  const pnl = +((px - p.entry) * d * OZ * p.lots).toFixed(2), risk = p.sl != null ? Math.abs(p.entry - p.sl) * OZ * p.lots : null;
-  const tr2 = { id: Date.now(), openT: p.open, closeT: t || S.cur, bal0: p.bal0, open: ds(p.open), close: ds(t || S.cur), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || $("feel").value, ctx: p.ctx };
+  const d = p.side === "buy" ? 1 : -1, pnl = +((px - p.entry) * d * OZ * p.lots).toFixed(2), risk = p.sl != null ? Math.abs(p.entry - p.sl) * OZ * p.lots : null;
+  const tr2 = { id: Date.now() + Math.floor(Math.random() * 1e3), openT: p.open, closeT: tc, bal0: p.bal0, open: ds(p.open), close: ds(tc), dur: Math.round((tc - p.open) / 60), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || "", conf: p.conf || null, quick: !!p.quick, ctx: p.ctx };
   const j = journal();
   j.push(tr2);
   setJournal(j);
   S.balance = +(S.balance + pnl).toFixed(2);
-  S.pos = null;
+  S.ps = S.ps.filter((x) => x !== p);
   save();
   status((reason === "TP" ? "\u2705 " : reason === "SL" ? "\u274C " : "") + "\u0623\u063A\u0644\u0642\u062A \u0627\u0644\u0635\u0641\u0642\u0629: " + pnl + "$");
-  $("why").value = "";
-  $("feel").value = "";
+  if (!S.ps.length) {
+    $("why").value = "";
+    setFeel(null);
+  }
   updLines();
   updPos();
   renderJournal();
 }
+function closeAll() {
+  S.ps.slice().forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
+}
+const fpl = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) * OZ * p.lots, fpips = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) / PIP;
+const durTxt = (m) => m >= 1440 ? (m / 1440).toFixed(1) + " \u064A\u0648\u0645" : m >= 60 ? (m / 60).toFixed(1) + " \u0633\u0627\u0639\u0629" : m + " \u062F\u0642\u064A\u0642\u0629";
 function updPos() {
-  var _a, _b;
+  const open = S.ps.reduce((a, p) => a + fpl(p), 0), eq = S.balance + open;
   $("bal").textContent = S.balance.toFixed(2);
-  const p = S.pos;
-  if (!p) {
+  $("acct").innerHTML = "\u0627\u0644\u0631\u0635\u064A\u062F <b>" + S.balance.toFixed(2) + '$</b> \xB7 \u0627\u0644\u0623\u0633\u0647\u0645 <b class="' + (open >= 0 ? "w" : "l") + '">' + eq.toFixed(2) + '$</b> \xB7 \u0639\u0627\u0626\u0645 <b class="' + (open >= 0 ? "w" : "l") + '">' + (open >= 0 ? "+" : "") + open.toFixed(2) + "$</b>";
+  if (!S.ps.length) {
     $("pos").textContent = "\u0644\u0627 \u062A\u0648\u062C\u062F \u0635\u0641\u0642\u0629 \u0645\u0641\u062A\u0648\u062D\u0629";
   } else {
-    const d = p.side === "buy" ? 1 : -1, pl = (S.price - p.entry) * d * OZ * p.lots;
-    $("pos").innerHTML = (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + " " + p.lots + " @ " + p.entry.toFixed(2) + " | SL " + ((_a = p.sl) != null ? _a : "\u2014") + " | TP " + ((_b = p.tp) != null ? _b : "\u2014") + ' | \u0627\u0644\u0631\u0628\u062D/\u0627\u0644\u062E\u0633\u0627\u0631\u0629 \u0627\u0644\u0645\u0641\u062A\u0648\u062D\u0629: <span class="' + (pl >= 0 ? "w" : "l") + '">' + pl.toFixed(2) + "$</span>";
+    $("pos").innerHTML = '<div class="plist">' + S.ps.map((p) => {
+      const pl = fpl(p);
+      return '<div class="pitem"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + "</span> " + p.lots + " @ " + p.entry.toFixed(2) + (p.sl != null ? " | SL " + p.sl : "") + (p.tp != null ? " | TP " + p.tp : "") + ' <b class="' + (pl >= 0 ? "w" : "l") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$ (" + fpips(p).toFixed(0) + 'p)</b><button class="pclose" data-id="' + p.id + '">\u2715 \u0625\u063A\u0644\u0627\u0642</button></div>';
+    }).join("") + "</div>" + (S.ps.length > 1 ? '<button id="bCloseAll">\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644</button>' : "");
+    document.querySelectorAll(".pclose").forEach((b) => b.onclick = () => {
+      const p = S.ps.find((x) => String(x.id) === b.dataset.id);
+      if (p) closePos(S.price, "\u064A\u062F\u0648\u064A", null, p);
+    });
+    const ca = $("bCloseAll");
+    if (ca) ca.onclick = closeAll;
   }
   updRisk();
 }
@@ -350,15 +455,16 @@ function updRisk() {
 function updLines() {
   plines.forEach((l) => ser.removePriceLine(l));
   plines = [];
-  const p = S.pos;
-  const add = (price, color, title, style) => {
-    if (price != null) plines.push(ser.createPriceLine({ price, color, lineWidth: 2, lineStyle: style, axisLabelVisible: true, title }));
+  const add = (price, color, title, style, w) => {
+    if (price != null) plines.push(ser.createPriceLine({ price, color, lineWidth: w || 2, lineStyle: style, axisLabelVisible: true, title }));
   };
-  if (p) {
-    add(p.entry, "#4aa3ff", "\u062F\u062E\u0648\u0644", 0);
-    add(p.sl, "#ff4d4d", "SL", 0);
-    add(p.tp, "#9afc41", "TP", 0);
-  } else {
+  for (const p of S.ps) {
+    const pl = fpl(p);
+    add(p.entry, pl >= 0 ? "#089981" : "#f23645", tr((p.side === "buy" ? "\u0634\u0631\u0627\u0621 " : "\u0628\u064A\u0639 ") + p.lots + "  " + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$  " + fpips(p).toFixed(0) + "p"), 0);
+    add(p.sl, "#ff4d4d", "SL", 2, 1);
+    add(p.tp, "#9afc41", "TP", 2, 1);
+  }
+  if (!S.ps.length) {
     add(num("sl"), "#ff4d4d", "SL?", 2);
     add(num("tp"), "#9afc41", "TP?", 2);
   }
@@ -598,9 +704,10 @@ function draw() {
       continue;
     }
     const col = d === pend && d.type !== "pen" ? "#fc0" : d.color || "#4aa3ff";
-    cx.strokeStyle = col;
+    cx.strokeStyle = rgba(col, d.op == null ? 1 : d.op);
     cx.lineCap = cx.lineJoin = "round";
-    cx.lineWidth = d === S.draw[sel] ? 3 : 2;
+    cx.lineWidth = (d.lw || 2) + (d === S.draw[sel] ? 1 : 0);
+    cx.setLineDash(d.ls === 1 ? [8, 5] : d.ls === 2 ? [2, 4] : []);
     for (const g of pix(d, pw)) {
       if (g.some((v) => v == null)) continue;
       cx.beginPath();
@@ -608,18 +715,17 @@ function draw() {
       cx.lineTo(g[2], g[3]);
       cx.stroke();
     }
-    if (d.type === "chan" && d.b) {
+    cx.setLineDash([]);
+    if (d.type === "chan" && d.b && d.fill !== false) {
       const P = [X(d.a.t), Y(d.a.p), X(d.b.t), Y(d.b.p), Y(d.b.p + d.off), Y(d.a.p + d.off)];
       if (!P.some((v) => v == null)) {
-        cx.globalAlpha = 0.1;
-        cx.fillStyle = col;
+        cx.fillStyle = rgba(d.fc || col, d.fo == null ? 0.1 : d.fo);
         cx.beginPath();
         cx.moveTo(P[0], P[1]);
         cx.lineTo(P[2], P[3]);
         cx.lineTo(P[2], P[4]);
         cx.lineTo(P[0], P[5]);
         cx.fill();
-        cx.globalAlpha = 1;
       }
     }
     if (d !== pend && (mode === "edit" || d === S.draw[sel])) for (const [, t, p] of handles(d)) {
@@ -703,6 +809,55 @@ function mag(q) {
   return best == null ? q : { x: XI(i), y: Y(best), t: B.U[i], p: best };
 }
 const P2 = (q) => ({ t: q.t, p: q.p });
+function rgba(h, a) {
+  if (!h || h[0] !== "#") return h;
+  const n = parseInt(h.length === 4 ? h.slice(1).split("").map((c) => c + c).join("") : h.slice(1), 16);
+  return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")";
+}
+const PAL = ["#ffffff", "#d1d4dc", "#9c9c9c", "#5d606b", "#363a45", "#000000", "#f23645", "#ff9800", "#ffeb3b", "#9afc41", "#089981", "#00bcd4", "#2962ff", "#4aa3ff", "#673ab7", "#9c27b0", "#e91e63", "#ff5252", "#ffb74d", "#fff176", "#81c784", "#4dd0e1", "#90caf9", "#ce93d8"];
+const STY_KEYS = ["color", "op", "lw", "ls", "fill", "fc", "fo"];
+function remember(d) {
+  S.sty = S.sty || {};
+  const o = {};
+  STY_KEYS.forEach((k) => {
+    if (d[k] != null) o[k] = d[k];
+  });
+  S.sty[d.type] = o;
+}
+function applyLast(d) {
+  const o = S.sty && S.sty[d.type];
+  if (o) STY_KEYS.forEach((k) => {
+    if (d[k] == null && o[k] != null) d[k] = o[k];
+  });
+  return d;
+}
+let popTarget = "color";
+function stylePopUI() {
+  const d = S.draw[sel];
+  if (!d) return;
+  const isC = d.type === "chan";
+  $("pFillRow").style.display = isC ? "" : "none";
+  const cur = popTarget === "fc" ? d.fc || d.color || "#4aa3ff" : d.color || "#4aa3ff";
+  document.querySelectorAll("#stylePop .pc").forEach((b) => b.classList.toggle("on", b.dataset.pc === cur));
+  $("pOp").value = Math.round(100 * (popTarget === "fc" ? d.fo == null ? 0.1 : d.fo : d.op == null ? 1 : d.op));
+  $("pOpV").textContent = $("pOp").value + "%";
+  document.querySelectorAll("#stylePop [data-lw]").forEach((b) => b.classList.toggle("on", +b.dataset.lw === (d.lw || 2)));
+  document.querySelectorAll("#stylePop [data-ls]").forEach((b) => b.classList.toggle("on", +b.dataset.ls === (d.ls || 0)));
+  $("pFill").classList.toggle("on", d.fill !== false);
+  $("pTgtLine").classList.toggle("on", popTarget === "color");
+  $("pTgtFill").classList.toggle("on", popTarget === "fc");
+  $("sColor").style.background = d.color || "#4aa3ff";
+}
+function styEdit(fn) {
+  if (sel < 0) return;
+  snap();
+  const d = S.draw[sel];
+  fn(d);
+  remember(d);
+  save();
+  dirty++;
+  stylePopUI();
+}
 function atrNow() {
   const n = B.nDone || B.n, i0 = Math.max(0, n - 14);
   let s = 0;
@@ -788,17 +943,20 @@ function execPos() {
     status("\u062A\u0645 \u0636\u0628\u0637 \u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631 \u0645\u0646 \u0627\u0644\u0645\u0631\u0628\u0639 \u2014 \u0627\u0636\u063A\u0637 \u0627\u0643\u0634\u0641");
     return;
   }
-  if (S.pos) return alert("\u0644\u062F\u064A\u0643 \u0635\u0641\u0642\u0629 \u0645\u0641\u062A\u0648\u062D\u0629");
+  const dp = S.price - d.e;
+  snap();
+  d.e = +(d.e + dp).toFixed(2);
+  d.sl = +(d.sl + dp).toFixed(2);
+  d.tp = +(d.tp + dp).toFixed(2);
   $("sl").value = d.sl;
   $("tp").value = d.tp;
   $("lots").value = posLots(d).toFixed(2);
-  openPos(d.side);
-  if (S.pos) {
-    snap();
+  const np = openPos(d.side);
+  if (np) {
     d.st = "live";
-    d.lots = S.pos.lots;
-    const sh = S.pos.entry - d.e;
-    d.e = S.pos.entry;
+    d.posId = np.id;
+    d.lots = np.lots;
+    d.e = np.entry;
     d.t = S.cur;
     d.t2 = Math.max(d.t2, S.cur + B.tfs * 5);
     save();
@@ -837,6 +995,11 @@ function select(i) {
   sel = i;
   dirty++;
   const tb = $("selBar");
+  if (sel < 0 || !S.draw[sel] || S.draw[sel].type === "pos") $("stylePop").classList.add("hidden");
+  else {
+    popTarget = "color";
+    stylePopUI();
+  }
   if (tb) {
     tb.classList.toggle("hidden", sel < 0);
     if (sel >= 0) {
@@ -844,11 +1007,13 @@ function select(i) {
       $("sExt").classList.toggle("on", !!d.ext);
       $("sExt").style.display = d.type === "hline" || d.type === "pen" || d.type === "pos" ? "none" : "";
       $("sExec").style.display = d.type === "pos" && d.st === "draft" ? "" : "none";
+      $("sColor").style.display = d.type === "pos" ? "none" : "";
     }
   }
   cv.classList.toggle("active", mode !== "none" || sel >= 0);
 }
 function finish(d) {
+  applyLast(d);
   snap();
   S.draw.push(d);
   pend = null;
@@ -903,7 +1068,8 @@ cv.addEventListener("pointerdown", (e) => {
   } else if (mode === "long" || mode === "short") {
     finish(newPos(mode === "long" ? "buy" : "sell", q));
   } else if (mode === "pen") {
-    pend = { type: "pen", pts: [P2(q)], color: S.lastColor || "#ffcc00" };
+    pend = applyLast({ type: "pen", pts: [P2(q)] });
+    if (!pend.color) pend.color = "#ffcc00";
   } else if (mode === "del") {
     const i = hitDraw(q);
     if (i >= 0) {
@@ -931,8 +1097,20 @@ cv.addEventListener("pointerdown", (e) => {
       return;
     }
     if (mode === "edit") {
-      for (const k of ["sl", "tp"]) {
-        const v = S.pos ? S.pos[k] : num(k);
+      for (const p of S.ps) for (const k of ["sl", "tp"]) {
+        if (p[k] != null && Math.abs(Y(p[k]) - q.y) < 16) {
+          drag = { k, p };
+          return;
+        }
+      }
+      for (const p of S.ps) {
+        if (Math.abs(Y(p.entry) - q.y) < 14) {
+          drag = { k: "new", p };
+          return;
+        }
+      }
+      if (!S.ps.length) for (const k of ["sl", "tp"]) {
+        const v = num(k);
         if (v != null && Math.abs(Y(v) - q.y) < 16) {
           drag = { k };
           return;
@@ -987,10 +1165,13 @@ cv.addEventListener("pointermove", (e) => {
       if (drag.k === "w") d.t2 = Math.max(q.t, d.t + B.tfs * 2);
       else if (drag.k !== "e" || d.st === "draft") {
         d[drag.k] = +q.p.toFixed(2);
-        if (d.st === "live" && S.pos && drag.k !== "e") {
-          S.pos[drag.k] = d[drag.k];
-          updLines();
-          updPos();
+        if (d.st === "live" && drag.k !== "e") {
+          const lp = S.ps.find((x) => x.id === d.posId) || S.ps[0];
+          if (lp) {
+            lp[drag.k] = d[drag.k];
+            updLines();
+            updPos();
+          }
         }
       }
     } else if (drag.k === "c") d.off = q.p - lineP(d.a, d.b, q.t);
@@ -998,20 +1179,34 @@ cv.addEventListener("pointermove", (e) => {
       const m = mag(q);
       d[drag.k] = { t: d.type === "hline" ? d.a.t : m.t, p: m.p };
     }
+  } else if (drag.p) {
+    const P = drag.p, dir = P.side === "buy" ? 1 : -1;
+    let k = drag.k;
+    if (k === "new") {
+      if (Math.abs(Y(p) - Y(P.entry)) < 8) return;
+      k = (p - P.entry) * dir < 0 ? "sl" : "tp";
+      drag.k = k;
+    }
+    if (k === "sl" && (p - P.entry) * dir >= 0) return;
+    if (k === "tp" && (p - P.entry) * dir <= 0) return;
+    P[k] = p;
+    updLines();
+    updPos();
   } else {
-    if (S.pos) S.pos[drag.k] = p;
-    else $(drag.k).value = p;
+    $(drag.k).value = p;
     updLines();
     updPos();
   }
 });
 cv.addEventListener("pointerup", (e) => {
   const q = pt(e);
+  if (drag && drag.p) save();
   if (pend && pend.type === "pen") {
     if (pend.pts.length > 1) {
       pend.pts = simplify(pend.pts);
       snap();
       S.draw.push(pend);
+      remember(pend);
       save();
     }
     pend = null;
@@ -1046,6 +1241,13 @@ function setMode(m) {
 function renderJournal() {
   const j = journal(), n = j.length, w = j.filter((t) => t.pnl > 0).length, Rs = j.filter((t) => t.R != null).map((t) => t.R), tot = j.reduce((a, t) => a + t.pnl, 0);
   $("stats").innerHTML = `\u0627\u0644\u0635\u0641\u0642\u0627\u062A: <b>${n}</b> | \u0646\u0633\u0628\u0629 \u0627\u0644\u0631\u0628\u062D: <b>${n ? (w / n * 100).toFixed(1) : 0}%</b> | \u0645\u062A\u0648\u0633\u0637 R: <b>${Rs.length ? (Rs.reduce((a, b) => a + b, 0) / Rs.length).toFixed(2) : "\u2014"}</b> | \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: <b class="${tot >= 0 ? "w" : "l"}">${tot.toFixed(2)}$</b>`;
+  {
+    const cs = confStats(j), f = (o) => {
+      var _a;
+      return o.n ? `${o.n} | ${o.winRate}% | R ${(_a = o.avgR) != null ? _a : "\u2014"}` : "\u2014";
+    };
+    $("stats").innerHTML += `<div class="small" id="confStats">\u{1F4AA} \u0648\u0627\u062B\u0642: <b>${f(cs.confident)}</b> &nbsp; \u{1F914} \u0645\u062A\u0631\u062F\u062F: <b>${f(cs.hesitant)}</b></div>`;
+  }
   const c = $("eq"), g = c.getContext("2d");
   c.width = c.clientWidth * (devicePixelRatio || 1);
   c.height = 120 * (devicePixelRatio || 1);
@@ -1066,12 +1268,27 @@ function renderJournal() {
   g.fillText(mx.toFixed(0), 2, 12);
   g.fillText(mn.toFixed(0), 2, Hh - 2);
   const esc = (s) => String(s != null ? s : "").replace(/[<>&"]/g, (c2) => "&#" + c2.charCodeAt(0) + ";");
-  $("journal").innerHTML = "<table><tr><th>\u0627\u0644\u0625\u063A\u0644\u0627\u0642</th><th>\u0627\u0644\u0627\u062A\u062C\u0627\u0647</th><th>\u062F\u062E\u0648\u0644</th><th>SL</th><th>TP</th><th>\u062E\u0631\u0648\u062C</th><th>$</th><th>R</th><th>\u0627\u0644\u0633\u0628\u0628/\u0627\u0644\u0634\u0639\u0648\u0631</th></tr>" + j.slice().reverse().map((t) => {
+  $("journal").innerHTML = "<table><tr><th>\u0627\u0644\u0625\u063A\u0644\u0627\u0642</th><th>\u0627\u0644\u0627\u062A\u062C\u0627\u0647</th><th>\u062F\u062E\u0648\u0644</th><th>SL</th><th>TP</th><th>\u062E\u0631\u0648\u062C</th><th>\u0627\u0644\u0645\u062F\u0629</th><th>$</th><th>R</th><th>\u0627\u0644\u0633\u0628\u0628/\u0627\u0644\u0634\u0639\u0648\u0631</th></tr>" + j.slice().reverse().map((t) => {
     var _a, _b, _c;
-    return `<tr><td>${esc(t.close)}</td><td>${t.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639"}</td><td>${t.entry}</td><td>${(_a = t.sl) != null ? _a : "\u2014"}</td><td>${(_b = t.tp) != null ? _b : "\u2014"}</td><td>${t.exit} ${esc(t.reason)}</td><td class="${t.pnl >= 0 ? "w" : "l"}">${t.pnl}</td><td>${(_c = t.R) != null ? _c : "\u2014"}</td><td>${esc(t.why)} / ${esc(t.feeling)}</td></tr>`;
+    return `<tr><td>${esc(t.close)}</td><td>${t.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639"}</td><td>${t.entry}</td><td>${(_a = t.sl) != null ? _a : "\u2014"}</td><td>${(_b = t.tp) != null ? _b : "\u2014"}</td><td>${t.exit} ${esc(t.reason)}</td><td>${t.dur != null ? durTxt(t.dur) : "\u2014"}</td><td class="${t.pnl >= 0 ? "w" : "l"}">${t.pnl}</td><td>${(_c = t.R) != null ? _c : "\u2014"}</td><td>${esc(t.why)} / ${t.conf === "confident" ? "\u{1F4AA} " : t.conf === "hesitant" ? "\u{1F914} " : ""}${esc(t.feeling)}</td></tr>`;
   }).join("") + "</table>";
 }
-const COLS = ["id", "open", "close", "tf", "side", "lots", "entry", "sl", "tp", "exit", "reason", "pnl", "R", "why", "feeling"];
+let FEEL = null;
+const FEELTXT = { confident: "\u0648\u0627\u062B\u0642", hesitant: "\u0645\u062A\u0631\u062F\u062F" };
+function setFeel(f) {
+  FEEL = f;
+  $("feel").value = f ? FEELTXT[f] : "";
+  document.querySelectorAll(".feelb").forEach((b) => b.classList.toggle("on", b.dataset.f === f));
+}
+document.querySelectorAll(".feelb").forEach((b) => b.onclick = () => setFeel(FEEL === b.dataset.f ? null : b.dataset.f));
+function confStats(j) {
+  const g = (k) => {
+    const a = j.filter((t) => t.conf === k), w = a.filter((t) => t.pnl > 0).length, R = a.filter((t) => t.R != null).map((t) => t.R);
+    return { n: a.length, winRate: a.length ? +(w / a.length * 100).toFixed(1) : null, avgR: R.length ? +(R.reduce((x, y) => x + y, 0) / R.length).toFixed(2) : null };
+  };
+  return { confident: g("confident"), hesitant: g("hesitant") };
+}
+const COLS = ["id", "open", "close", "tf", "side", "lots", "entry", "sl", "tp", "exit", "reason", "pnl", "R", "why", "feeling", "conf", "dur", "quick"];
 function dl(name, txt, type) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([txt], { type }));
@@ -1126,7 +1343,7 @@ async function startAt(t) {
   const c = await lastM1Before(t);
   if (c == null) return alert("\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A");
   S.cur = c;
-  S.pos = null;
+  S.ps = [];
   await render();
   const tc = await targetNext();
   if (tc) S.cur = tc;
@@ -1148,6 +1365,13 @@ async function init() {
   S = LS("gr_session") || {};
   S.tf = S.tf || "H1";
   S.draw = S.draw || [];
+  S.ps = S.ps || (S.pos ? [Object.assign({ id: 1 }, S.pos)] : []);
+  delete S.pos;
+  Object.defineProperty(S, "pos", { get() {
+    return S.ps[0] || null;
+  }, set(v) {
+    S.ps = v ? [v] : [];
+  }, enumerable: false, configurable: true });
   if (S.magnet === void 0) S.magnet = true;
   S.startBal = (_a = S.startBal) != null ? _a : 1e3;
   S.balance = (_b = S.balance) != null ? _b : S.startBal;
@@ -1161,6 +1385,9 @@ async function init() {
   S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
   tfBtns();
+  if (S.qlot) $("qLot").value = String(S.qlot);
+  S.macd = Object.assign({ on: false, f: 12, s: 26, g: 9 }, S.macd || {});
+  macdUI();
   $("riskPct").value = S.riskPct || 1;
   if (!S.scale) S.scale = { auto: true, mode: 0 };
   applyScale();
@@ -1187,23 +1414,40 @@ async function init() {
   requestAnimationFrame(draw);
   ts.scrollToRealTime();
 }
-async function stepBack() {
-  if (Q || busy) return;
-  stopPlay();
+async function stepBack(auto) {
+  if (Q) return;
+  if (!auto) {
+    stopPlay();
+    for (let i = 0; busy && i < 200; i++) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (busy) return;
   busy = true;
   try {
-    const first = Date.parse(MAN.first) / 1e3, T = S.cur - 86400;
+    const first = Date.parse(MAN.first) / 1e3;
+    let T;
+    if (auto === "bar") {
+      const A = B.A, k = B.k;
+      const st = A.t[k] < S.cur ? A.t[k] : k > 0 ? A.t[k - 1] : null;
+      if (st == null) {
+        status("\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
+        stopPlay();
+        return;
+      }
+      T = st;
+    } else T = S.cur - 86400;
     if (T <= first + 86400) {
       status("\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
+      stopPlay();
       return;
     }
     const to = await lastM1Before(T);
     if (to == null || to <= first) {
       status("\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
+      stopPlay();
       return;
     }
     const cut = ds(to);
-    if (S.pos && S.pos.open > to) S.pos = null;
+    S.ps = S.ps.filter((p) => p.open <= to);
     const j = journal(), keep = [], gone = [];
     for (const t of j) {
       const ct = t.closeT != null ? t.closeT : null;
@@ -1213,8 +1457,7 @@ async function stepBack() {
       gone.forEach((t) => {
         S.balance = +(S.balance - t.pnl).toFixed(2);
       });
-      const last = gone[gone.length - 1];
-      if (!S.pos && last.openT != null && last.openT <= to) S.pos = { side: last.side, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx };
+      for (const last of gone) if (last.openT != null && last.openT <= to) S.ps.push({ id: last.id, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
       setJournal(keep);
       renderJournal();
     }
@@ -1223,7 +1466,7 @@ async function stepBack() {
     save();
     updLines();
     updPos();
-    status("\u23EA \u0631\u062C\u0648\u0639 \u064A\u0648\u0645: " + cut);
+    if (auto !== "bar") status("\u23EA \u0631\u062C\u0648\u0639 \u064A\u0648\u0645: " + cut);
   } catch (e) {
     console.error(e);
     status("\u062E\u0637\u0623: " + e.message);
@@ -1237,7 +1480,10 @@ document.addEventListener("keydown", (e) => {
   const tg = e.target, tn = tg && tg.tagName;
   if (tn === "INPUT" || tn === "TEXTAREA" || tn === "SELECT") return;
   const k = e.key;
-  if (k === " ") {
+  if (k === " " && e.shiftKey) {
+    e.preventDefault();
+    $("bRev").click();
+  } else if (k === " ") {
     e.preventDefault();
     $("bPlay").click();
   } else if (k === "ArrowRight") {
@@ -1265,7 +1511,8 @@ document.addEventListener("keydown", (e) => {
 $("bDay").onclick = stepDay;
 $("bPlay").onclick = () => {
   if (playT) return stopPlay();
-  $("bPlay").textContent = "\u23F8 \u0625\u064A\u0642\u0627\u0641";
+  stopPlay();
+  $("bPlay").textContent = "\u23F8";
   $("bPlay").classList.add("playing");
   playT = setInterval(stepNext, +$("speed").value);
 };
@@ -1273,7 +1520,19 @@ $("speed").onchange = () => {
   if (playT) {
     stopPlay();
     $("bPlay").click();
+  } else if (revT) {
+    stopPlay();
+    $("bRev").click();
   }
+};
+const revTick = () => stepBack("bar");
+$("bRev").onclick = () => {
+  if (revT) return stopPlay();
+  if (Q) return;
+  stopPlay();
+  $("bRev").textContent = "\u23F8";
+  $("bRev").classList.add("playing");
+  revT = setInterval(revTick, +$("speed").value);
 };
 const tfBtns = () => document.querySelectorAll(".tfb").forEach((b) => b.classList.toggle("on", b.dataset.tf === S.tf));
 document.querySelectorAll(".tfb").forEach((b) => b.onclick = () => {
@@ -1290,6 +1549,21 @@ $("tf").onchange = async () => {
 };
 document.querySelectorAll("#draw [data-m]").forEach((b) => b.onclick = () => setMode(b.dataset.m));
 $("bUndo").onclick = undo;
+$("bMacd").onclick = () => {
+  S.macd.on = !S.macd.on;
+  macdUI();
+  save();
+  mPrev = null;
+  if (S.macd.on) setTimeout(() => updMacd(true), 0);
+};
+["mF", "mS", "mG"].forEach((id) => $(id).onchange = () => {
+  const v = Math.round(num(id));
+  if (v > 0 && v <= 200) {
+    S.macd[{ mF: "f", mS: "s", mG: "g" }[id]] = v;
+    save();
+    updMacd(true);
+  } else macdUI();
+});
 const PS = chart.priceScale("right");
 function applyScale() {
   const sc = S.scale || (S.scale = { auto: true, mode: 0 });
@@ -1344,12 +1618,62 @@ $("bMag").onclick = () => {
 $("sExt").onclick = () => selEdit((d) => {
   d.ext = !d.ext;
 });
-document.querySelectorAll("#selBar [data-c]").forEach((b) => b.onclick = () => {
-  S.lastColor = b.dataset.c;
-  selEdit((d) => {
-    d.color = b.dataset.c;
-  });
+document.querySelectorAll("#selBar [data-c]").forEach((b) => b.onclick = () => styEdit((d) => {
+  d.color = b.dataset.c;
+}));
+$("stylePop").querySelector(".pal").innerHTML = PAL.map((c) => '<button class="pc" data-pc="' + c + '" style="background:' + c + '"></button>').join("");
+$("sColor").onclick = () => {
+  $("stylePop").classList.toggle("hidden");
+  stylePopUI();
+};
+document.querySelectorAll("#stylePop .pc").forEach((b) => b.onclick = () => styEdit((d) => {
+  if (popTarget === "fc") {
+    d.fc = b.dataset.pc;
+    d.fill = true;
+  } else d.color = b.dataset.pc;
+}));
+let opSnap = false;
+$("pOp").addEventListener("pointerdown", () => {
+  if (sel >= 0 && !opSnap) {
+    snap();
+    opSnap = true;
+  }
 });
+$("pOp").oninput = () => {
+  const d = S.draw[sel];
+  if (!d) return;
+  if (!opSnap) {
+    snap();
+    opSnap = true;
+  }
+  const v = +$("pOp").value / 100;
+  if (popTarget === "fc") d.fo = v;
+  else d.op = v;
+  remember(d);
+  save();
+  dirty++;
+  $("pOpV").textContent = $("pOp").value + "%";
+};
+$("pOp").onchange = () => {
+  opSnap = false;
+};
+document.querySelectorAll("#stylePop [data-lw]").forEach((b) => b.onclick = () => styEdit((d) => {
+  d.lw = +b.dataset.lw;
+}));
+document.querySelectorAll("#stylePop [data-ls]").forEach((b) => b.onclick = () => styEdit((d) => {
+  d.ls = +b.dataset.ls;
+}));
+$("pFill").onclick = () => styEdit((d) => {
+  d.fill = d.fill === false;
+});
+$("pTgtLine").onclick = () => {
+  popTarget = "color";
+  stylePopUI();
+};
+$("pTgtFill").onclick = () => {
+  popTarget = "fc";
+  stylePopUI();
+};
 $("sDel").onclick = () => {
   if (sel < 0) return;
   snap();
@@ -1378,8 +1702,15 @@ $("bClr").onclick = () => {
 $("bSmc").onclick = () => $("smcPanel").classList.toggle("hidden");
 $("bBuy").onclick = () => openPos("buy");
 $("bSell").onclick = () => openPos("sell");
-$("bClose").onclick = () => {
-  if (S.pos) closePos(S.price, "\u064A\u062F\u0648\u064A");
+$("bClose").onclick = () => closeAll();
+$("qBuy").onclick = () => openPos("buy", true);
+$("qSell").onclick = () => openPos("sell", true);
+$("qLot").onchange = () => {
+  const v = parseFloat($("qLot").value);
+  if (v > 0) {
+    S.qlot = v;
+    save();
+  }
 };
 ["sl", "tp", "lots"].forEach((k) => $(k).oninput = () => {
   updLines();
@@ -1440,7 +1771,11 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { get Q() {
+window.GR = { get sty() {
+  return S.sty;
+}, macd: () => MC ? { n: mH.data().length, last: mH.data().slice(-1)[0], range: MC.timeScale().getVisibleLogicalRange(), main: chart.timeScale().getVisibleLogicalRange() } : null, get revT() {
+  return revT;
+}, get Q() {
   return Q;
 }, startChal, execPos, chal: () => CH, PS: () => PS.options(), ptpx(o, r) {
   return { x: r.left + X(o.t), y: r.top + Y(o.p) };
@@ -1501,12 +1836,14 @@ let Q = null;
 function quizUI() {
   $("quizP").classList.toggle("hidden", !Q);
   $("bBack").disabled = !!Q;
+  $("bRev").disabled = !!Q;
+  if (Q) stopPlay();
   if (!Q) return;
   $("qBias").textContent = Q.bias ? "\u0627\u0644\u0627\u062A\u062C\u0627\u0647: " + (Q.bias === "up" ? "\u0635\u0627\u0639\u062F \u2B06" : "\u0647\u0627\u0628\u0637 \u2B07") : "\u0627\u062E\u062A\u0631 \u0627\u0644\u0627\u062A\u062C\u0627\u0647";
 }
 $("bQuiz").onclick = async () => {
   stopPlay();
-  if (S.pos) return alert("\u0623\u063A\u0644\u0642 \u0627\u0644\u0635\u0641\u0642\u0629 \u0623\u0648\u0644\u0627\u064B");
+  if (S.ps.length) return alert("\u0623\u063A\u0644\u0642 \u0627\u0644\u0635\u0641\u0642\u0629 \u0623\u0648\u0644\u0627\u064B");
   await startAt(randStart());
   Q = { bias: null };
   $("qE").value = S.price.toFixed(2);
@@ -1546,7 +1883,7 @@ async function chalList() {
 }
 async function startChal(c) {
   stopPlay();
-  if (S.pos) return alert("\u0623\u063A\u0644\u0642 \u0627\u0644\u0635\u0641\u0642\u0629 \u0623\u0648\u0644\u0627\u064B");
+  if (S.ps.length) return alert("\u0623\u063A\u0644\u0642 \u0627\u0644\u0635\u0641\u0642\u0629 \u0623\u0648\u0644\u0627\u064B");
   S.tf = c.tf;
   $("tf").value = c.tf;
   tfBtns();
@@ -1635,7 +1972,7 @@ function coachData() {
     app: "gold-replay",
     v: 1,
     exported: (/* @__PURE__ */ new Date()).toISOString(),
-    session: { cursor: ds(S.cur), tf: S.tf, startBalance: S.startBal, balance: S.balance, openPosition: S.pos },
+    session: { cursor: ds(S.cur), tf: S.tf, startBalance: S.startBal, balance: S.balance, openPositions: S.ps, equity: +(S.balance + S.ps.reduce((a, p) => a + fpl(p), 0)).toFixed(2) },
     stats: {
       trades: j.length,
       winRate: j.length ? +(w / j.length * 100).toFixed(1) : 0,
@@ -1644,7 +1981,8 @@ function coachData() {
       quizzes: qs.length,
       quizBiasAccuracy: qs.length ? +(qs.filter((q) => q.biasCorrect).length / qs.length * 100).toFixed(1) : null
     },
-    trades: j.map((t) => Object.assign({}, t, { reason: tr(t.reason) })),
+    confidenceStats: confStats(j),
+    trades: j.map((t) => Object.assign({}, t, { reason: tr(t.reason), feeling: tr(t.feeling) })),
     quiz: qs,
     challenges: S.chal || {},
     lang: window.I18N && I18N.lang || "ar"
