@@ -1,0 +1,15 @@
+*{box-sizing:border-box}body{margin:0;background:#000;color:#ddd;font-family:Tahoma,Arial,sans-serif;font-size:15px}
+header{padding:6px 8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#111}
+#price{color:#9afc41;font-weight:bold}#status{color:#fc0}
+#chartWrap{position:relative;height:56vh;min-height:300px}#chart{position:absolute;inset:0}
+#ov{position:absolute;inset:0;pointer-events:none;z-index:5}#ov.active{pointer-events:auto;touch-action:none}
+.row{display:flex;flex-wrap:wrap;gap:6px;padding:4px 6px;align-items:center}
+button,select,.btn{min-height:44px;min-width:44px;padding:6px 12px;font-size:16px;background:#222;color:#eee;border:1px solid #444;border-radius:8px}
+button.on{background:#9afc41;color:#000}.buy{background:#1d5e1d}.sell{background:#7a1d1d}
+input,textarea{background:#111;color:#eee;border:1px solid #444;border-radius:6px;padding:8px;font-size:16px}
+input[type=number]{width:95px}textarea,#feel{width:calc(100% - 12px);margin:4px 6px}
+label{display:inline-flex;gap:4px;align-items:center}.panel{border-top:1px solid #333;padding:6px}
+#smcPanel label{display:flex;padding:6px}.hidden{display:none}.small{font-size:13px;color:#aaa}
+h3{margin:4px 6px;font-size:16px;color:#9afc41}#pos{padding:6px;font-weight:bold}
+#eq{width:100%;background:#050505}table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid #222;padding:3px;text-align:center}
+.w{color:#9afc41}.l{color:#f55}
