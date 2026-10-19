@@ -38,7 +38,7 @@ const bs=(A,v,n)=>{let lo=0,hi=n-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(A[m]
 async function lastM1Before(T){let M=await m1(T-4*86400,T);let i=bs(M.t,T-1,M.n);if(i<0){M=await m1(T-40*86400,T);i=bs(M.t,T-1,M.n)}return i<0?null:M.t[i];}
 // ---------- state ----------
 const LS=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}};
-function save(){dirty++;localStorage.setItem('gr_session',JSON.stringify(S));}
+function save(){dirty++;if(window.__course)return;localStorage.setItem('gr_session',JSON.stringify(S));}
 function journal(){return LS('gr_journal')||[]}
 function setJournal(j){localStorage.setItem('gr_journal',JSON.stringify(j));}
 // ---------- chart ----------
@@ -48,6 +48,20 @@ const chart=LightweightCharts.createChart($('chart'),{layout:{background:{color:
 const ser=chart.addCandlestickSeries({upColor:'#9afc41',downColor:'#9c9c9c',borderUpColor:'#9c9c9c',borderDownColor:'#9c9c9c',wickUpColor:'#9c9c9c',wickDownColor:'#9c9c9c',priceFormat:{type:'price',precision:2,minMove:0.01}});
 let plines=[],B0=null;
 // ---------- MACD pane (revealed candles only) ----------
+// ---------- EMA overlay: warm-up from all loaded history before the window (revealed only) ----------
+const EMAC=['#ffcc00','#4aa3ff','#e91e63'];let emaSer=null,emaPrev=null;
+function updEma(force){const m=S.ema;if(!m||!B)return;
+ if(!m.on){if(emaSer){emaSer.forEach(x=>x.setData([]));}emaPrev=null;return}
+ if(!emaSer)emaSer=EMAC.map(c=>chart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false}));
+ const A=B.A,st=B.k-B.nDone,key=m.p.join()+':'+B.U[0]+':'+S.tf;
+ m.p.forEach((per,j)=>{const k2=2/(per+1);let e=null,cnt=0;const out=[];
+  // warm-up over loaded bars before the window
+  for(let i=0;i<st;i++){const c=A.c[i];e=e==null?c:c*k2+e*(1-k2);cnt++}
+  for(let i=0;i<B.n;i++){const c=B.C[i];e=e==null?c:c*k2+e*(1-k2);cnt++;out.push(cnt>=per?{time:B0[i].time,value:e}:{time:B0[i].time})}
+  if(!force&&emaPrev&&emaPrev.key===key&&(B.n===emaPrev.n||B.n===emaPrev.n+1)){const l=out[out.length-1];if(l.value!=null)emaSer[j].update(l)}else emaSer[j].setData(out);
+  emaSer[j].applyOptions({visible:true});});
+ emaPrev={key,n:B.n};}
+function emaUI(){const m=S.ema;$('bEma').classList.toggle('on',m.on);$('emaLeg').classList.toggle('hidden',!m.on);['e1','e2','e3'].forEach((id,i)=>$(id).value=m.p[i]);}
 let MC=null,mH,mM,mS,mPrev=null;
 function macdInit(){if(MC)return;MC=LightweightCharts.createChart($('macdC'),{layout:{background:{color:'#000'},textColor:'#888'},grid:{vertLines:{visible:false},horzLines:{color:'#111'}},
   rightPriceScale:{borderColor:'#333',minimumWidth:66},timeScale:{visible:false,rightOffset:8},crosshair:{mode:0},autoSize:true,handleScroll:false,handleScale:false});
@@ -78,7 +92,7 @@ async function render(){
  ser.setData(data);B0=data;
  B={U,O,H,L,C,n:U.length,nDone,tfs:TFS[tf],A,k};
  S.price=C[C.length-1];
- B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();
+ B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();updEma();
  $('clock').textContent=ds(cur)+' برلين';$('price').textContent=S.price.toFixed(2);
  updLines();updPos();
 }
@@ -336,7 +350,7 @@ async function init(){
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
  if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;tfBtns();if(S.qlot)$('qLot').value=String(S.qlot);S.macd=Object.assign({on:false,f:12,s:26,g:9},S.macd||{});macdUI();$('riskPct').value=S.riskPct||1;if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();S.ema=Object.assign({on:false,p:[20,50,200]},S.ema||{});emaUI();if(S.qlot)$('qLot').value=String(S.qlot);S.macd=Object.assign({on:false,f:12,s:26,g:9},S.macd||{});macdUI();$('riskPct').value=S.riskPct||1;if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
@@ -357,11 +371,11 @@ async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&
   setJournal(keep);renderJournal();}
  S.cur=to;await render();save();updLines();updPos();if(auto!=='bar')status('⏪ رجوع يوم: '+cut);
 }catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
-$('bBack').onclick=stepBack;
+$('bBack').onclick=()=>stepBack();
 $('bNext').onclick=stepNext;
 // ---------- keyboard shortcuts (desktop) ----------
 document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT')return;
- const k=e.key;
+ const k=e.key;if(window.__course&&!window.__courseStep&&(k===' '||k==='ArrowRight'||k==='ArrowLeft'))return;
  if(k===' '&&e.shiftKey){e.preventDefault();$('bRev').click()}
  else if(k===' '){e.preventDefault();$('bPlay').click()}
  else if(k==='ArrowRight'){e.preventDefault();if(e.shiftKey)$('bDay').click();else $('bNext').click()}
@@ -380,6 +394,8 @@ document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.
 $('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('bUndo').onclick=undo;
+$('bEma').onclick=()=>{S.ema.on=!S.ema.on;emaUI();save();updEma(true)};
+['e1','e2','e3'].forEach((id,i)=>$(id).onchange=()=>{const v=Math.round(num(id));if(v>0&&v<=500){S.ema.p[i]=v;save();updEma(true)}else emaUI()});
 $('bMacd').onclick=()=>{S.macd.on=!S.macd.on;macdUI();save();mPrev=null;if(S.macd.on)setTimeout(()=>updMacd(true),0)};
 ['mF','mS','mG'].forEach(id=>$(id).onchange=()=>{const v=Math.round(num(id));if(v>0&&v<=200){S.macd[{mF:'f',mS:'s',mG:'g'}[id]]=v;save();updMacd(true)}else macdUI()});
 // ---------- price-scale toggles (A / L / %) ----------
@@ -426,7 +442,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);

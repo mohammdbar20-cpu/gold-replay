@@ -129,3 +129,44 @@ body.macd-on #chartWrap{height:calc(100vh - 350px)}
 #stylePop .pal{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin:6px 0;direction:ltr}#stylePop .pc{min-width:0!important;min-height:0!important;height:28px;padding:0;border-radius:6px;border:2px solid rgba(255,255,255,.12)}
 #stylePop .pc.on{border-color:#fff;box-shadow:0 0 0 2px #9afc41}#stylePop .prow{display:flex;align-items:center;gap:5px;margin:4px 0}#stylePop .prow button{min-height:32px;min-width:36px;padding:2px 8px;font-size:14px}
 #stylePop input[type=range]{flex:1;accent-color:#9afc41}#sColor{font-size:14px}
+#emaLeg{position:absolute;top:6px;left:6px;z-index:7;font-size:11px;font-weight:700;color:#9c9c9c;display:flex;gap:3px;align-items:center;background:rgba(0,0,0,.55);padding:2px 4px;border-radius:6px}#emaLeg input{width:40px!important;padding:1px 3px;font-size:11px;font-weight:700;min-height:0;border-radius:4px;background:rgba(0,0,0,.6)}
+/* ===== COURSE ===== */
+.course-chip{background:linear-gradient(135deg,#6d28d9,#d4a017)!important;color:#fff!important;border:0!important;font-weight:700}
+body.course #quick,body.course #side,body.course #ctrl,body.course #draw,body.course #bCourse,body.course #sExec,body.course .tfb,body.course #tf{display:none!important}
+body.course.course-step #ctrl{display:grid!important}
+body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
+#courseView{position:fixed;inset:0;z-index:60;background:radial-gradient(circle at 20% 0,#1d1440 0,#07070a 55%);color:#eee;overflow-y:auto;direction:var(--d);padding-bottom:40px}
+.cv-load{padding:40vh 0;text-align:center;font-size:30px}
+.cv-top{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(10,8,20,.92);backdrop-filter:blur(6px);border-bottom:1px solid #2a2340}
+.cv-title{flex:1;font-weight:800;font-size:15px}.cv-stats{display:flex;gap:10px;font-weight:700;font-size:13px}
+.cv-x{background:#1c1830;color:#fff;border:1px solid #3b3260;border-radius:10px;min-width:38px;min-height:38px;font-size:16px}
+.cv-cont{display:block;margin:14px auto 4px;width:calc(100% - 24px);max-width:520px;min-height:50px;border:0;border-radius:14px;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:16px;font-weight:800;box-shadow:0 4px 0 #0f6b30}
+.cv-path{max-width:560px;margin:0 auto;padding:10px 12px}
+.cv-mod{background:#121020;border:1px solid #2a2340;border-radius:16px;margin:10px 0;overflow:hidden}
+.cv-mod.locked{opacity:.45}.cv-mod.passed{border-color:#d4a017}
+.cv-mh{display:flex;gap:12px;align-items:center;padding:12px;cursor:pointer}
+.cv-num{flex:0 0 44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#6d28d9;font-weight:800;font-size:18px}
+.cv-mod.passed .cv-num{background:#d4a017}.cv-mh>div{flex:1}
+.cv-lv{font-size:11px;color:#a99be0}.cv-prog{height:6px;background:#2a2340;border-radius:4px;margin:6px 0 3px}.cv-prog i{display:block;height:100%;background:#22c55e;border-radius:4px}
+.cv-nodes{display:flex;flex-direction:column;padding:6px 12px 16px;gap:10px}
+.cv-node{width:72px;height:72px;border-radius:50%;border:0;background:#6d28d9;color:#fff;box-shadow:0 5px 0 #43188a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px}
+.cv-node small{font-size:11px;opacity:.8}.cv-node.done{background:#d4a017;box-shadow:0 5px 0 #8a6a0d;font-size:12px}.cv-node.guided:not(.done){background:#2563eb;box-shadow:0 5px 0 #1e3a8a}
+.cv-node.lock{background:#2a2340;box-shadow:0 5px 0 #17132a;opacity:.6}
+.cv-node.boss{width:auto;min-width:140px;border-radius:18px;align-self:center;background:linear-gradient(135deg,#b91c1c,#d4a017);margin:8px 0;padding:8px 14px}
+.cv-learn{align-self:center;background:none;border:1px solid #3b3260;color:#cfc6ff;border-radius:10px;padding:8px 14px}
+.cv-lessons{max-width:640px;margin:0 auto;padding:12px}.cv-card{background:#121020;border:1px solid #2a2340;border-radius:14px;padding:12px;margin:10px 0;line-height:1.6}
+.cv-card h4{margin:0 0 6px;color:#f5c542}.cv-card.concept{border-color:#6d28d9}.cv-watch{color:#fca5a5;font-size:13px}
+#cSheet{position:fixed;left:0;right:0;bottom:0;z-index:50;max-height:46vh;overflow-y:auto;background:#0e0c18;border-top:2px solid #6d28d9;border-radius:16px 16px 0 0;padding:10px 12px 14px;direction:var(--d);color:#eee;box-shadow:0 -8px 24px #000a}
+.cs-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px}.cs-kind{flex:1;font-weight:700}.cs-diff{color:#f5c542}
+.cs-prompt{font-size:16px;font-weight:700;line-height:1.5;margin:4px 0 8px}
+.cs-ans input,.cs-ans select{width:100%;min-height:44px;font-size:16px;background:#1c1830;color:#fff;border:1px solid #3b3260;border-radius:10px;padding:0 10px;margin:3px 0}
+.cs-tool{min-height:44px;width:100%;border-radius:10px;border:1px dashed #a78bfa;background:#1c1830;color:#fff;margin:3px 0}
+.cs-ans .row{display:flex;gap:6px}
+.cs-choices{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.cs-ch{min-height:46px;border-radius:12px;border:2px solid #3b3260;background:#151226;color:#fff;font-weight:600;box-shadow:0 3px 0 #0a0814}.cs-ch.on{border-color:#22c55e;background:#123020}
+.cs-go{width:100%;min-height:50px;margin-top:10px;border:0;border-radius:14px;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:17px;font-weight:800;box-shadow:0 4px 0 #0f6b30}.cs-go:disabled{opacity:.4}
+.cs-res{flex:1;font-weight:800;font-size:15px}.cs-res.ok{color:#4ade80}.cs-res.mid{color:#facc15}.cs-res.bad{color:#f87171}
+.cs-stars{color:#f5c542;font-size:18px}.cs-xp{background:#6d28d9;border-radius:8px;padding:2px 8px;font-weight:700}
+.cs-expl{line-height:1.6;margin:6px 0}.cs-hint{background:#1e293b;border-radius:10px;padding:8px;font-size:13px}
+.cs-boss{text-align:center;padding:10px}.cs-big{font-size:54px}
+@media (min-width:900px){#cSheet{left:auto;top:52px;width:400px;max-height:none;border-radius:0;border-top:0;border-inline-start:2px solid #6d28d9}body.course #chartWrap{height:calc(100vh - 70px)!important;margin-inline-end:400px}body.course #app{grid-template-areas:"top top top" "chart chart chart" "macd macd macd" "ctrl ctrl ctrl"}}

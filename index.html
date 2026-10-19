@@ -6,17 +6,18 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=21"></head><body>
+<link rel="stylesheet" href="style.css?v=24"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>XAUUSD</b><small>تدريب الذهب</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
 <div class="row" id="tfRow">
  <select id="tf" hidden><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
  <div class="seg"><button class="tfb" data-tf="D1" title="يومي">يوم</button><button class="tfb" data-tf="H4" title="4 ساعات">4س</button><button class="tfb" data-tf="H1" title="ساعة">1س</button><button class="tfb" data-tf="M15" title="15 دقيقة">15د</button></div>
- <button id="bMacd" class="chip" title="مؤشر الماكد MACD">MACD</button><button id="bSmc" class="chip" title="مؤشر Smart Money Concepts">ƒx SMC</button>
+ <button id="bCourse" class="chip course-chip" title="الكورس">🎓 الكورس</button><button id="bEma" class="chip" title="المتوسطات المتحركة EMA">EMA</button><button id="bMacd" class="chip" title="مؤشر الماكد MACD">MACD</button><button id="bSmc" class="chip" title="مؤشر Smart Money Concepts">ƒx SMC</button>
 </div>
 </div>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas>
+<div id="emaLeg" class="hidden">EMA <input id="e1" type="number" style="color:#ffcc00"><input id="e2" type="number" style="color:#4aa3ff"><input id="e3" type="number" style="color:#e91e63"></div>
 <div id="scaleBtns"><button id="scP" title="مقياس نسبة مئوية">%</button><button id="scL" title="مقياس لوغاريتمي">L</button><button id="scA" class="on" title="مقياس تلقائي">A</button></div>
 <div id="stylePop" class="hidden"><div class="prow"><button id="pTgtLine" class="on">الخط</button><button id="pTgtFill">التعبئة</button></div><div class="pal"></div>
 <div class="prow"><span class="small">الشفافية</span><input id="pOp" type="range" min="5" max="100" value="100"><span id="pOpV" class="small">100%</span></div>
@@ -44,6 +45,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <span class="sep"></span>
  <button id="bUndo" disabled title="تراجع (Ctrl+Z)"><i>↩️</i><span>رجوع</span></button><button id="bClr" title="مسح كل الرسومات"><i>🗑</i><span>مسح</span></button>
 </div>
+<div id="courseView" class="hidden"></div><div id="cSheet" class="hidden"></div>
 <aside id="side">
 <div id="smcPanel" class="panel hidden"><h3>⚙ مؤشر SMC</h3>
  <label><input type="checkbox" id="s_on"> تفعيل SMC</label>
@@ -85,4 +87,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="i18n.js?v=21"></script><script src="app.js?v=21"></script></body></html>
+<script src="i18n.js?v=24"></script><script src="app.js?v=24"></script></body></html>
