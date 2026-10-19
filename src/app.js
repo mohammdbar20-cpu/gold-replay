@@ -137,9 +137,9 @@ function l2t(l){const U=B.U,n=B.n;if(l>=n-1)return U[n-1]+(l-n+1)*B.tfs;if(l<=0)
 const X=t=>ts.logicalToCoordinate(t2l(t)),Y=p=>ser.priceToCoordinate(p),XI=i=>ts.logicalToCoordinate(i);
 function pt(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const l=ts.coordinateToLogical(x),p=ser.coordinateToPrice(y);return {x,y,t:l==null?null:l2t(l),p}}
 const lineP=(a,b,t)=>a.p+(b.p-a.p)*((t-a.t)/((b.t-a.t)||1));
-function segs(d){if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}]];const s=[[d.a,d.b]];
+function segs(d){if(d.type==='pen'){const o=[];for(let i=1;i<d.pts.length;i++)o.push([d.pts[i-1],d.pts[i]]);return o}if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}]];const s=[[d.a,d.b]];
  if(d.type==='chan')s.push([{t:d.a.t,p:d.a.p+d.off},{t:d.b.t,p:d.b.p+d.off}]);return s;}
-function handles(d){if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
+function handles(d){if(d.type==='pen')return [];if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
  if(d.type==='chan'){const m=(d.a.t+d.b.t)/2;h.push(['c',m,lineP(d.a,d.b,m)+d.off])}return h;}
 let dirty=1,lastKey='';const HIST=[];
 function snap(){HIST.push(JSON.stringify(S.draw));if(HIST.length>50)HIST.shift()}
@@ -169,7 +169,7 @@ function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(d
    for(const [o,lab,c] of [[s.top,s.trend===-1?'Strong High':'Weak High','#f23645'],[s.bot,s.trend===1?'Strong Low':'Weak Low','#089981']]){
     const x1=XI(o.i),y=Y(o.p);if(x1==null||y==null)continue;cx.strokeStyle=c;cx.beginPath();cx.moveTo(x1,y);cx.lineTo(xr,y);cx.stroke();txt(lab,xr-70,y+(c==='#089981'?12:-3),c);}}
  }
- for(const d of S.draw.concat(pend?[pend]:[])){const col=d===pend?'#fc0':(d.color||'#4aa3ff');cx.strokeStyle=col;cx.lineWidth=d===S.draw[sel]?3:2;
+ for(const d of S.draw.concat(pend?[pend]:[])){const col=d===pend&&d.type!=='pen'?'#fc0':(d.color||'#4aa3ff');cx.strokeStyle=col;cx.lineCap=cx.lineJoin='round';cx.lineWidth=d===S.draw[sel]?3:2;
   for(const g of pix(d,pw)){if(g.some(v=>v==null))continue;cx.beginPath();cx.moveTo(g[0],g[1]);cx.lineTo(g[2],g[3]);cx.stroke();}
   if(d.type==='chan'&&d.b){const P=[X(d.a.t),Y(d.a.p),X(d.b.t),Y(d.b.p),Y(d.b.p+d.off),Y(d.a.p+d.off)];if(!P.some(v=>v==null)){cx.globalAlpha=.1;cx.fillStyle=col;cx.beginPath();cx.moveTo(P[0],P[1]);cx.lineTo(P[2],P[3]);cx.lineTo(P[2],P[4]);cx.lineTo(P[0],P[5]);cx.fill();cx.globalAlpha=1;}}
   if(d!==pend&&(mode==='edit'||d===S.draw[sel]))for(const [,t,p] of handles(d)){const hx=d.type==='hline'?pw-20:X(t),hy=Y(p);if(hx==null||hy==null)continue;cx.fillStyle='#000';cx.strokeStyle=col;cx.lineWidth=2;cx.beginPath();cx.arc(hx,hy,8,0,7);cx.fill();cx.stroke();}}
@@ -186,8 +186,13 @@ function mag(q){if(!S.magnet||!B||q.t==null)return q;const l=ts.coordinateToLogi
  let best=null,bd=30;for(const v of [B.O[i],B.H[i],B.L[i],B.C[i]]){const y=Y(v);if(y==null)continue;const dd=Math.abs(y-q.y);if(dd<bd){bd=dd;best=v}}
  return best==null?q:{x:XI(i),y:Y(best),t:B.U[i],p:best};}
 const P2=q=>({t:q.t,p:q.p});
+// Ramer-Douglas-Peucker in screen pixels (eps 1.5px), capped at 300 points
+function simplify(pts){const P=pts.map(o=>[X(o.t),Y(o.p)]);let eps=1.5,keep;
+ const rdp=(a,b)=>{let md=0,mi=-1;for(let i=a+1;i<b;i++){const d=dSeg(P[i][0],P[i][1],P[a][0],P[a][1],P[b][0],P[b][1]);if(d>md){md=d;mi=i}}if(md>eps){rdp(a,mi);keep[mi]=1;rdp(mi,b)}};
+ do{keep=new Uint8Array(P.length);keep[0]=keep[P.length-1]=1;rdp(0,P.length-1);eps*=1.6}while(keep.reduce((a,v)=>a+v,0)>300);
+ return pts.filter((o,i)=>keep[i]).map(o=>({t:o.t,p:+o.p.toFixed(3)}));}
 let sel=-1;
-function select(i){sel=i;dirty++;const tb=$('selBar');if(tb){tb.classList.toggle('hidden',sel<0);if(sel>=0){const d=S.draw[sel];$('sExt').classList.toggle('on',!!d.ext);$('sExt').style.display=d.type==='hline'?'none':''}}
+function select(i){sel=i;dirty++;const tb=$('selBar');if(tb){tb.classList.toggle('hidden',sel<0);if(sel>=0){const d=S.draw[sel];$('sExt').classList.toggle('on',!!d.ext);$('sExt').style.display=(d.type==='hline'||d.type==='pen')?'none':''}}
  cv.classList.toggle('active',mode!=='none'||sel>=0);}
 function finish(d){snap();S.draw.push(d);pend=null;save();const m=mode;mode='none';document.querySelectorAll('#draw [data-m]').forEach(b=>b.classList.remove('on'));select(S.draw.length-1);}
 function selEdit(fn){if(sel<0)return;snap();fn(S.draw[sel]);save();select(sel);}
@@ -200,22 +205,25 @@ cv.addEventListener('pointerdown',e=>{if(!B)return;let q=pt(e);if(q.t==null||q.p
  else if(mode==='tline'){if(!pend)pend={type:'tline',a:P2(qm),b:P2(qm)};else{pend.b=P2(qm);finish(pend)}}
  else if(mode==='chan'){if(!pend)pend={type:'chan',a:P2(qm),b:P2(qm),off:0,stage:1};else if(pend.stage===1){pend.b=P2(qm);pend.stage=2}
   else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;finish(pend)}}
+ else if(mode==='pen'){pend={type:'pen',pts:[P2(q)],color:S.lastColor||'#ffcc00'};}
  else if(mode==='del'){const i=hitDraw(q);if(i>=0){snap();S.draw.splice(i,1);save()}}
  else{ // edit mode or a selected drawing
   const cand=mode==='edit'?S.draw.map((d,i)=>i).reverse():(sel>=0?[sel]:[]);
   for(const i of cand){const d=S.draw[i],k=hitHandle(d,q);if(k){snap();drag={d,k};if(mode!=='edit')select(i);return}}
   const i=hitDraw(q);
-  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:P2(d.a),b0:d.b&&P2(d.b)};if(mode!=='edit')select(i);return}
+  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:d.a&&P2(d.a),b0:d.b&&P2(d.b),pts0:d.pts&&d.pts.map(P2)};if(mode!=='edit')select(i);return}
   if(mode==='edit'){for(const k of ['sl','tp']){const v=S.pos?S.pos[k]:num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};return}}}
   else if(i>=0)select(i);else select(-1);}});
 cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q.t==null)return;
+ if(pend&&pend.type==='pen'){const L=pend.pts[pend.pts.length-1];if(Math.hypot(X(L.t)-q.x,Y(L.p)-q.y)>=3&&pend.pts.length<2000){pend.pts.push(P2(q));dirty++}return}
  if(pend&&pend.stage!==2&&mode!=='none'){pend.b=P2(mag(q));dirty++}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t);dirty++}
  if(!drag)return;const p=+q.p.toFixed(2);dirty++;
  if(drag.d){const d=drag.d;
-  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}
+  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
   else if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else{const m=mag(q);d[drag.k]={t:d.type==='hline'?d.a.t:m.t,p:m.p};}}
  else{if(S.pos)S.pos[drag.k]=p;else $(drag.k).value=p;updLines();updPos();}});
 cv.addEventListener('pointerup',e=>{const q=pt(e);
+ if(pend&&pend.type==='pen'){if(pend.pts.length>1){pend.pts=simplify(pend.pts);snap();S.draw.push(pend);save()}pend=null;dirty++;down=null;return}
  // press-drag-release drawing of a trendline / first channel edge
  if(pend&&down&&q.t!=null&&Math.hypot(q.x-down.x,q.y-down.y)>15){if(pend.type==='tline'){pend.b=P2(mag(q));finish(pend)}else if(pend.stage===1){pend.b=P2(mag(q));pend.stage=2}}
  down=null;if(drag){drag=null;save()}});
@@ -282,7 +290,7 @@ document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(t
  else if((e.ctrlKey||e.metaKey)&&(k==='z'||k==='Z')){e.preventDefault();undo()}
  else if(k==='Escape'){if(mode!=='none')setMode(mode);else select(-1)}
  else if((k==='Delete'||k==='Backspace')&&sel>=0){e.preventDefault();$('sDel').click()}
- else if(!e.ctrlKey&&!e.metaKey&&!e.altKey){const m={h:'hline',t:'tline',c:'chan',e:'edit',d:'del'}[k.toLowerCase()];if(m)setMode(m);else if(k.toLowerCase()==='m')$('bMag').click()}});$('bDay').onclick=stepDay;
+ else if(!e.ctrlKey&&!e.metaKey&&!e.altKey){const m={h:'hline',t:'tline',c:'chan',e:'edit',d:'del',p:'pen'}[k.toLowerCase()];if(m)setMode(m);else if(k.toLowerCase()==='m')$('bMag').click()}});$('bDay').onclick=stepDay;
 $('bPlay').onclick=()=>{if(playT)return stopPlay();$('bPlay').textContent='⏸ إيقاف';$('bPlay').classList.add('playing');playT=setInterval(stepNext,+$('speed').value)};
 $('speed').onchange=()=>{if(playT){stopPlay();$('bPlay').click()}};
 const tfBtns=()=>document.querySelectorAll('.tfb').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
@@ -292,7 +300,7 @@ document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.d
 $('bUndo').onclick=undo;
 $('bMag').onclick=()=>{S.magnet=!S.magnet;$('bMag').classList.toggle('on',S.magnet);save()};
 $('sExt').onclick=()=>selEdit(d=>{d.ext=!d.ext});
-document.querySelectorAll('#selBar [data-c]').forEach(b=>b.onclick=()=>selEdit(d=>{d.color=b.dataset.c}));
+document.querySelectorAll('#selBar [data-c]').forEach(b=>b.onclick=()=>{S.lastColor=b.dataset.c;selEdit(d=>{d.color=b.dataset.c})});
 $('sDel').onclick=()=>{if(sel<0)return;snap();S.draw.splice(sel,1);save();select(-1)};
 $('sOk').onclick=()=>select(-1);
 $('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save();select(-1)}};
@@ -310,7 +318,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);

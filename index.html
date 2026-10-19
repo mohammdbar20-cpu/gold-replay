@@ -6,7 +6,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=11"></head><body>
+<link rel="stylesheet" href="style.css?v=12"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>XAUUSD</b><small>تدريب الذهب</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
@@ -24,7 +24,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <button id="bBack" title="رجوع يوم (Shift+←)">⏪ يوم</button><button id="bNext" title="الشمعة التالية (→)">▶| شمعة</button><button id="bDay" title="تقدم يوم (Shift+→)">يوم ⏩</button>
 </div>
 <div class="row" id="draw">
- <button data-m="hline" title="خط أفقي (H)"><i>—</i><span>أفقي</span></button><button data-m="tline" title="خط ترند (T)"><i>╱</i><span>ترند</span></button><button data-m="chan" title="قناة سعرية (C)"><i>⫽</i><span>قناة</span></button>
+ <button data-m="hline" title="خط أفقي (H)"><i>—</i><span>أفقي</span></button><button data-m="tline" title="خط ترند (T)"><i>╱</i><span>ترند</span></button><button data-m="chan" title="قناة سعرية (C)"><i>⫽</i><span>قناة</span></button><button data-m="pen" title="قلم حر (P)"><i>🖊</i><span>قلم</span></button>
  <span class="sep"></span>
  <button id="bMag" class="on" title="مغناطيس OHLC (M)"><i>🧲</i><span>مغناطيس</span></button><button data-m="edit" title="تعديل (E)"><i>✋</i><span>تعديل</span></button><button data-m="del" title="حذف بالنقر (D)"><i>⌫</i><span>حذف</span></button>
  <span class="sep"></span>
@@ -69,4 +69,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="app.js?v=11"></script></body></html>
+<script src="app.js?v=12"></script></body></html>

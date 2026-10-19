@@ -462,12 +462,18 @@ function pt(e) {
 }
 const lineP = (a, b, t) => a.p + (b.p - a.p) * ((t - a.t) / (b.t - a.t || 1));
 function segs(d) {
+  if (d.type === "pen") {
+    const o = [];
+    for (let i = 1; i < d.pts.length; i++) o.push([d.pts[i - 1], d.pts[i]]);
+    return o;
+  }
   if (d.type === "hline") return [[{ t: -1e12, p: d.a.p }, { t: 1e12, p: d.a.p }]];
   const s = [[d.a, d.b]];
   if (d.type === "chan") s.push([{ t: d.a.t, p: d.a.p + d.off }, { t: d.b.t, p: d.b.p + d.off }]);
   return s;
 }
 function handles(d) {
+  if (d.type === "pen") return [];
   if (d.type === "hline") return [["a", l2t(B.n - 1), d.a.p]];
   const h = [["a", d.a.t, d.a.p], ["b", d.b.t, d.b.p]];
   if (d.type === "chan") {
@@ -576,8 +582,9 @@ function draw() {
     }
   }
   for (const d of S.draw.concat(pend ? [pend] : [])) {
-    const col = d === pend ? "#fc0" : d.color || "#4aa3ff";
+    const col = d === pend && d.type !== "pen" ? "#fc0" : d.color || "#4aa3ff";
     cx.strokeStyle = col;
+    cx.lineCap = cx.lineJoin = "round";
     cx.lineWidth = d === S.draw[sel] ? 3 : 2;
     for (const g of pix(d, pw)) {
       if (g.some((v) => v == null)) continue;
@@ -677,6 +684,32 @@ function mag(q) {
   return best == null ? q : { x: XI(i), y: Y(best), t: B.U[i], p: best };
 }
 const P2 = (q) => ({ t: q.t, p: q.p });
+function simplify(pts) {
+  const P = pts.map((o) => [X(o.t), Y(o.p)]);
+  let eps = 1.5, keep;
+  const rdp = (a, b) => {
+    let md = 0, mi = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = dSeg(P[i][0], P[i][1], P[a][0], P[a][1], P[b][0], P[b][1]);
+      if (d > md) {
+        md = d;
+        mi = i;
+      }
+    }
+    if (md > eps) {
+      rdp(a, mi);
+      keep[mi] = 1;
+      rdp(mi, b);
+    }
+  };
+  do {
+    keep = new Uint8Array(P.length);
+    keep[0] = keep[P.length - 1] = 1;
+    rdp(0, P.length - 1);
+    eps *= 1.6;
+  } while (keep.reduce((a, v) => a + v, 0) > 300);
+  return pts.filter((o, i) => keep[i]).map((o) => ({ t: o.t, p: +o.p.toFixed(3) }));
+}
 let sel = -1;
 function select(i) {
   sel = i;
@@ -687,7 +720,7 @@ function select(i) {
     if (sel >= 0) {
       const d = S.draw[sel];
       $("sExt").classList.toggle("on", !!d.ext);
-      $("sExt").style.display = d.type === "hline" ? "none" : "";
+      $("sExt").style.display = d.type === "hline" || d.type === "pen" ? "none" : "";
     }
   }
   cv.classList.toggle("active", mode !== "none" || sel >= 0);
@@ -744,6 +777,8 @@ cv.addEventListener("pointerdown", (e) => {
       delete pend.stage;
       finish(pend);
     }
+  } else if (mode === "pen") {
+    pend = { type: "pen", pts: [P2(q)], color: S.lastColor || "#ffcc00" };
   } else if (mode === "del") {
     const i = hitDraw(q);
     if (i >= 0) {
@@ -766,7 +801,7 @@ cv.addEventListener("pointerdown", (e) => {
     if (i >= 0 && (mode === "edit" || i === sel)) {
       const d = S.draw[i];
       snap();
-      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: P2(d.a), b0: d.b && P2(d.b) };
+      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: d.a && P2(d.a), b0: d.b && P2(d.b), pts0: d.pts && d.pts.map(P2) };
       if (mode !== "edit") select(i);
       return;
     }
@@ -786,6 +821,14 @@ cv.addEventListener("pointermove", (e) => {
   if (!B) return;
   const q = pt(e);
   if (q.p == null || q.t == null) return;
+  if (pend && pend.type === "pen") {
+    const L = pend.pts[pend.pts.length - 1];
+    if (Math.hypot(X(L.t) - q.x, Y(L.p) - q.y) >= 3 && pend.pts.length < 2e3) {
+      pend.pts.push(P2(q));
+      dirty++;
+    }
+    return;
+  }
   if (pend && pend.stage !== 2 && mode !== "none") {
     pend.b = P2(mag(q));
     dirty++;
@@ -802,8 +845,11 @@ cv.addEventListener("pointermove", (e) => {
       const l = ts.coordinateToLogical(q.x);
       if (l == null) return;
       const dl2 = l - drag.l0, dp = q.p - drag.p0, mv = (o) => ({ t: d.type === "hline" ? o.t : l2t(t2l(o.t) + dl2), p: o.p + dp });
-      d.a = mv(drag.a0);
-      if (drag.b0) d.b = mv(drag.b0);
+      if (drag.pts0) d.pts = drag.pts0.map(mv);
+      else {
+        d.a = mv(drag.a0);
+        if (drag.b0) d.b = mv(drag.b0);
+      }
     } else if (drag.k === "c") d.off = q.p - lineP(d.a, d.b, q.t);
     else {
       const m = mag(q);
@@ -818,6 +864,18 @@ cv.addEventListener("pointermove", (e) => {
 });
 cv.addEventListener("pointerup", (e) => {
   const q = pt(e);
+  if (pend && pend.type === "pen") {
+    if (pend.pts.length > 1) {
+      pend.pts = simplify(pend.pts);
+      snap();
+      S.draw.push(pend);
+      save();
+    }
+    pend = null;
+    dirty++;
+    down = null;
+    return;
+  }
   if (pend && down && q.t != null && Math.hypot(q.x - down.x, q.y - down.y) > 15) {
     if (pend.type === "tline") {
       pend.b = P2(mag(q));
@@ -1053,7 +1111,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     $("sDel").click();
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const m = { h: "hline", t: "tline", c: "chan", e: "edit", d: "del" }[k.toLowerCase()];
+    const m = { h: "hline", t: "tline", c: "chan", e: "edit", d: "del", p: "pen" }[k.toLowerCase()];
     if (m) setMode(m);
     else if (k.toLowerCase() === "m") $("bMag").click();
   }
@@ -1094,9 +1152,12 @@ $("bMag").onclick = () => {
 $("sExt").onclick = () => selEdit((d) => {
   d.ext = !d.ext;
 });
-document.querySelectorAll("#selBar [data-c]").forEach((b) => b.onclick = () => selEdit((d) => {
-  d.color = b.dataset.c;
-}));
+document.querySelectorAll("#selBar [data-c]").forEach((b) => b.onclick = () => {
+  S.lastColor = b.dataset.c;
+  selEdit((d) => {
+    d.color = b.dataset.c;
+  });
+});
 $("sDel").onclick = () => {
   if (sel < 0) return;
   snap();
@@ -1178,7 +1239,9 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { stepBack, cpx(i) {
+window.GR = { ptpx(o, r) {
+  return { x: r.left + X(o.t), y: r.top + Y(o.p) };
+}, stepBack, cpx(i) {
   const r = cv.getBoundingClientRect();
   return { x: r.left + XI(i), y: r.top + Y(B.H[i]), h: B.H[i] };
 }, hit: (q) => [hitDraw(q), sel >= 0 && hitHandle(S.draw[sel], q), JSON.stringify(drag)], get sel() {
