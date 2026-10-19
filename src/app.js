@@ -77,18 +77,18 @@ async function advance(to){
 async function doStep(fn){if(busy)return;busy=true;try{await advance(await fn())}catch(e){console.error(e);status('خطأ: '+e.message)}busy=false;}
 const stepNext=()=>doStep(targetNext);
 const stepDay=()=>doStep(async()=>{const M=await m1(S.cur,S.cur+86400*4);const i=bs(M.t,S.cur+86400,M.n);return i>=0?M.t[i]:null});
-function stopPlay(){if(playT){clearInterval(playT);playT=null}$('bPlay').textContent='⏵ تشغيل';}
+function stopPlay(){if(playT){clearInterval(playT);playT=null}$('bPlay').textContent='▶️ تشغيل';$('bPlay').classList.remove('playing');}
 function status(s){$('status').textContent=s;setTimeout(()=>{if($('status').textContent===s)$('status').textContent=''},4000)}
 // ---------- trading ----------
 const num=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:null};
 function checkHit(M,i){const p=S.pos,d=p.side==='buy'?1:-1;
  const slHit=p.sl!=null&&(d>0?M.l[i]<=p.sl:M.h[i]>=p.sl), tpHit=p.tp!=null&&(d>0?M.h[i]>=p.tp:M.l[i]<=p.tp);
  if(slHit){closePos(p.sl,'SL',M.t[i]);return true}if(tpHit){closePos(p.tp,'TP',M.t[i]);return true}return false;}
-function openPos(side){if(S.pos)return alert('لديك صفقة مفتوحة');const lots=num('lots');if(!lots||lots<=0)return alert('أدخل حجم اللوت');
+function openPos(side){stopPlay();if(S.pos)return alert('لديك صفقة مفتوحة');const lots=num('lots');if(!lots||lots<=0)return alert('أدخل حجم اللوت');
  const e=S.price,sl=num('sl'),tp=num('tp'),d=side==='buy'?1:-1;
  if(sl!=null&&(sl-e)*d>=0)return alert('وقف الخسارة في الجهة الخطأ');if(tp!=null&&(tp-e)*d<=0)return alert('الهدف في الجهة الخطأ');
  S.pos={side,entry:e,sl,tp,lots,open:S.cur,tf:S.tf,why:$('why').value,feel:$('feel').value,bal0:S.balance,ctx:snapCtx()};save();updLines();updPos();}
-function closePos(px,reason,t){const p=S.pos;if(!p)return;const d=p.side==='buy'?1:-1;
+function closePos(px,reason,t){stopPlay();const p=S.pos;if(!p)return;const d=p.side==='buy'?1:-1;
  const pnl=+((px-p.entry)*d*OZ*p.lots).toFixed(2),risk=p.sl!=null?Math.abs(p.entry-p.sl)*OZ*p.lots:null;
  const tr={id:Date.now(),open:ds(p.open),close:ds(t||S.cur),tf:p.tf,side:p.side,lots:p.lots,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,pnl,R:risk?+(pnl/risk).toFixed(2):null,why:p.why,feeling:p.feel||$('feel').value,ctx:p.ctx};
  const j=journal();j.push(tr);setJournal(j);S.balance=+(S.balance+pnl).toFixed(2);S.pos=null;save();
@@ -217,17 +217,19 @@ async function init(){
  $('range').textContent=ds(Date.parse(MAN.first)/1000)+' → '+ds(Date.parse(MAN.last)/1000);
  S=LS('gr_session')||{};S.tf=S.tf||'H1';S.draw=S.draw||[];S.startBal=S.startBal??1000;S.balance=S.balance??S.startBal;
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
- if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf])S.tf='H1';
+ if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
  renderJournal();requestAnimationFrame(draw);ts.scrollToRealTime();}
 $('bNext').onclick=stepNext;$('bDay').onclick=stepDay;
-$('bPlay').onclick=()=>{if(playT)return stopPlay();$('bPlay').textContent='⏸ إيقاف';playT=setInterval(stepNext,+$('speed').value)};
+$('bPlay').onclick=()=>{if(playT)return stopPlay();$('bPlay').textContent='⏸ إيقاف';$('bPlay').classList.add('playing');playT=setInterval(stepNext,+$('speed').value)};
 $('speed').onchange=()=>{if(playT){stopPlay();$('bPlay').click()}};
-$('tf').onchange=async()=>{S.tf=$('tf').value;await render();ts.scrollToRealTime();save()};
+const tfBtns=()=>document.querySelectorAll('.tfb').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
+document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.tf)return;$('tf').value=b.dataset.tf;$('tf').onchange()});
+$('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){S.draw=[];save()}};
 $('bSmc').onclick=()=>$('smcPanel').classList.toggle('hidden');

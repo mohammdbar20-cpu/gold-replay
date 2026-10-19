@@ -13,3 +13,7 @@ label{display:inline-flex;gap:4px;align-items:center}.panel{border-top:1px solid
 h3{margin:4px 6px;font-size:16px;color:#9afc41}#pos{padding:6px;font-weight:bold}
 #eq{width:100%;background:#050505}table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid #222;padding:3px;text-align:center}
 .w{color:#9afc41}.l{color:#f55}
+
+#tfRow{gap:4px}.tfb{flex:1;font-size:17px;font-weight:bold}.tfb.on{background:#9afc41;color:#000}
+#bPlay.play{flex:2;min-height:56px;font-size:22px;font-weight:bold;background:#1d5e1d;border-color:#9afc41}#bPlay.playing{background:#7a5a00;border-color:#fc0}
+#speed{min-height:56px;font-size:20px;font-weight:bold}

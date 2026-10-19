@@ -6,14 +6,17 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css"></head><body>
+<link rel="stylesheet" href="style.css?v=4"></head><body>
 <header><b>🟡 تدريب الذهب</b> <span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas></div>
+<div class="row" id="tfRow">
+ <select id="tf" hidden><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
+ <button class="tfb" data-tf="D1">يوم</button><button class="tfb" data-tf="H4">4 ساعات</button><button class="tfb" data-tf="H1">ساعة</button><button class="tfb" data-tf="M15">15 دقيقة</button>
+</div>
 <div class="row" id="ctrl">
- <select id="tf"><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
- <button id="bNext">▶| شمعة</button><button id="bPlay">⏵ تشغيل</button>
- <select id="speed"><option value="1000">1x</option><option value="500" selected>2x</option><option value="250">4x</option><option value="100">10x</option></select>
- <button id="bDay">+يوم</button>
+ <button id="bPlay" class="play">▶️ تشغيل</button>
+ <select id="speed" aria-label="السرعة"><option value="1000" selected>1x</option><option value="500">2x</option><option value="250">4x</option><option value="100">10x</option></select>
+ <button id="bNext">▶| شمعة</button><button id="bDay">+يوم</button>
 </div>
 <div class="row" id="draw">
  <button data-m="hline">— أفقي</button><button data-m="tline">╱ ترند</button><button data-m="chan">⫽ قناة</button>
@@ -56,4 +59,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
 <div class="panel"><h3>سجل الصفقات</h3>
  <div class="row"><button id="bCsv">تصدير CSV</button><button id="bJson">تصدير JSON</button><label class="btn">استيراد<input type="file" id="imp" accept=".json,.csv" hidden></label><button id="bWipe">حذف السجل</button></div>
  <div id="journal"></div></div>
-<script src="app.js?v=3"></script></body></html>
+<script src="app.js?v=4"></script></body></html>

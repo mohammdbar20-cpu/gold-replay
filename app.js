@@ -257,7 +257,8 @@ function stopPlay() {
     clearInterval(playT);
     playT = null;
   }
-  $("bPlay").textContent = "\u23F5 \u062A\u0634\u063A\u064A\u0644";
+  $("bPlay").textContent = "\u25B6\uFE0F \u062A\u0634\u063A\u064A\u0644";
+  $("bPlay").classList.remove("playing");
 }
 function status(s) {
   $("status").textContent = s;
@@ -283,6 +284,7 @@ function checkHit(M, i) {
   return false;
 }
 function openPos(side) {
+  stopPlay();
   if (S.pos) return alert("\u0644\u062F\u064A\u0643 \u0635\u0641\u0642\u0629 \u0645\u0641\u062A\u0648\u062D\u0629");
   const lots = num("lots");
   if (!lots || lots <= 0) return alert("\u0623\u062F\u062E\u0644 \u062D\u062C\u0645 \u0627\u0644\u0644\u0648\u062A");
@@ -295,6 +297,7 @@ function openPos(side) {
   updPos();
 }
 function closePos(px, reason, t) {
+  stopPlay();
   const p = S.pos;
   if (!p) return;
   const d = p.side === "buy" ? 1 : -1;
@@ -792,9 +795,10 @@ async function init() {
     S.smc = Object.assign({}, S.smc || {}, { on: false });
   }
   if (!isFinite(S.cur)) delete S.cur;
-  if (!TFS[S.tf]) S.tf = "H1";
+  if (!TFS[S.tf] || S.tf === "M5") S.tf = "H1";
   S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
+  tfBtns();
   $("startBal").value = S.startBal;
   for (const k in S.smc) {
     const el = $("s_" + k);
@@ -822,6 +826,7 @@ $("bDay").onclick = stepDay;
 $("bPlay").onclick = () => {
   if (playT) return stopPlay();
   $("bPlay").textContent = "\u23F8 \u0625\u064A\u0642\u0627\u0641";
+  $("bPlay").classList.add("playing");
   playT = setInterval(stepNext, +$("speed").value);
 };
 $("speed").onchange = () => {
@@ -830,8 +835,15 @@ $("speed").onchange = () => {
     $("bPlay").click();
   }
 };
+const tfBtns = () => document.querySelectorAll(".tfb").forEach((b) => b.classList.toggle("on", b.dataset.tf === S.tf));
+document.querySelectorAll(".tfb").forEach((b) => b.onclick = () => {
+  if (b.dataset.tf === S.tf) return;
+  $("tf").value = b.dataset.tf;
+  $("tf").onchange();
+});
 $("tf").onchange = async () => {
   S.tf = $("tf").value;
+  tfBtns();
   await render();
   ts.scrollToRealTime();
   save();
