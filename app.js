@@ -496,6 +496,7 @@ function undo() {
     S.draw = JSON.parse(HIST.pop());
     drag = null;
     save();
+    select(sel < S.draw.length ? sel : -1);
   }
   dirty++;
   updUndo();
@@ -503,7 +504,7 @@ function undo() {
 function draw() {
   if (document.hidden) return setTimeout(() => requestAnimationFrame(draw), 500);
   const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
-  const key = B ? [w, h, dirty, XI(0), XI(B.n - 1), Y(S.price), Y(S.price * 1.01), mode, S.draw.length, JSON.stringify(pend), drag ? JSON.stringify(S.draw) : ""].join("|") : "x" + dirty;
+  const key = B ? [w, h, dirty, XI(0), XI(B.n - 1), Y(S.price), Y(S.price * 1.01), mode, sel, S.draw.length, JSON.stringify(pend), drag ? JSON.stringify(S.draw) : ""].join("|") : "x" + dirty;
   if (key === lastKey) return requestAnimationFrame(draw);
   lastKey = key;
   updUndo();
@@ -575,29 +576,40 @@ function draw() {
     }
   }
   for (const d of S.draw.concat(pend ? [pend] : [])) {
-    cx.strokeStyle = d === pend ? "#fc0" : "#4aa3ff";
-    cx.lineWidth = 2;
-    for (const [a, b] of segs(d)) {
-      const x1 = d.type === "hline" ? 0 : X(a.t), x2 = d.type === "hline" ? pw : X(b.t);
+    const col = d === pend ? "#fc0" : d.color || "#4aa3ff";
+    cx.strokeStyle = col;
+    cx.lineWidth = d === S.draw[sel] ? 3 : 2;
+    for (const g of pix(d, pw)) {
+      if (g.some((v) => v == null)) continue;
       cx.beginPath();
-      cx.moveTo(x1, Y(a.p));
-      cx.lineTo(x2, Y(b.p));
+      cx.moveTo(g[0], g[1]);
+      cx.lineTo(g[2], g[3]);
       cx.stroke();
     }
-    if (d.type === "chan") {
-      cx.fillStyle = "rgba(74,163,255,.08)";
-      cx.beginPath();
-      cx.moveTo(X(d.a.t), Y(d.a.p));
-      cx.lineTo(X(d.b.t), Y(d.b.p));
-      cx.lineTo(X(d.b.t), Y(d.b.p + d.off));
-      cx.lineTo(X(d.a.t), Y(d.a.p + d.off));
-      cx.fill();
+    if (d.type === "chan" && d.b) {
+      const P = [X(d.a.t), Y(d.a.p), X(d.b.t), Y(d.b.p), Y(d.b.p + d.off), Y(d.a.p + d.off)];
+      if (!P.some((v) => v == null)) {
+        cx.globalAlpha = 0.1;
+        cx.fillStyle = col;
+        cx.beginPath();
+        cx.moveTo(P[0], P[1]);
+        cx.lineTo(P[2], P[3]);
+        cx.lineTo(P[2], P[4]);
+        cx.lineTo(P[0], P[5]);
+        cx.fill();
+        cx.globalAlpha = 1;
+      }
     }
-    if (mode === "edit" && d !== pend) for (const [, t, p] of handles(d)) {
-      cx.fillStyle = "#fff";
+    if (d !== pend && (mode === "edit" || d === S.draw[sel])) for (const [, t, p] of handles(d)) {
+      const hx = d.type === "hline" ? pw - 20 : X(t), hy = Y(p);
+      if (hx == null || hy == null) continue;
+      cx.fillStyle = "#000";
+      cx.strokeStyle = col;
+      cx.lineWidth = 2;
       cx.beginPath();
-      cx.arc(d.type === "hline" ? pw - 20 : X(t), Y(p), 7, 0, 7);
+      cx.arc(hx, hy, 8, 0, 7);
       cx.fill();
+      cx.stroke();
     }
   }
   cx.restore();
@@ -609,46 +621,128 @@ function dSeg(px, py, x1, y1, x2, y2) {
   u = Math.max(0, Math.min(1, u));
   return Math.hypot(px - x1 - u * dx, py - y1 - u * dy);
 }
+function pix(d, pw) {
+  if (d.type === "hline") {
+    const y = Y(d.a.p);
+    return [[0, y, pw, y]];
+  }
+  const out = [];
+  for (const [a, b] of segs(d)) {
+    let x1 = X(a.t), y1 = Y(a.p), x2 = X(b.t), y2 = Y(b.p);
+    if (d.ext && x1 != null && x2 != null && y1 != null && y2 != null && Math.abs(x2 - x1) > 0.5) {
+      const k = (pw + 50 - x2) / (x2 - x1);
+      if (k > 0) {
+        x2 += k * (x2 - x1);
+        y2 += k * (y2 - y1);
+      }
+    }
+    out.push([x1, y1, x2, y2]);
+  }
+  return out;
+}
 function hitDraw(q) {
+  const pw = cv.clientWidth - 60;
   for (let i = S.draw.length - 1; i >= 0; i--) {
-    const d = S.draw[i];
-    for (const [a, b] of segs(d)) {
-      const x1 = d.type === "hline" ? 0 : X(a.t), x2 = d.type === "hline" ? 9999 : X(b.t);
-      if (dSeg(q.x, q.y, x1, Y(a.p), x2, Y(b.p)) < 16) return i;
+    for (const g of pix(S.draw[i], pw)) {
+      if (g.some((v) => v == null)) continue;
+      if (dSeg(q.x, q.y, g[0], g[1], g[2], g[3]) < 18) return i;
     }
   }
   return -1;
 }
+function hitHandle(d, q) {
+  const pw = cv.clientWidth - 60;
+  for (const [k, t, p] of handles(d)) {
+    const hx = d.type === "hline" ? pw - 20 : X(t), hy = Y(p);
+    if (hx != null && hy != null && Math.hypot(hx - q.x, hy - q.y) < 24) return k;
+  }
+  return null;
+}
+function mag(q) {
+  if (!S.magnet || !B || q.t == null) return q;
+  const l = ts.coordinateToLogical(q.x);
+  if (l == null) return q;
+  const i = Math.round(l);
+  if (i < 0 || i >= B.n) return q;
+  let best = null, bd = 30;
+  for (const v of [B.O[i], B.H[i], B.L[i], B.C[i]]) {
+    const y = Y(v);
+    if (y == null) continue;
+    const dd = Math.abs(y - q.y);
+    if (dd < bd) {
+      bd = dd;
+      best = v;
+    }
+  }
+  return best == null ? q : { x: XI(i), y: Y(best), t: B.U[i], p: best };
+}
+const P2 = (q) => ({ t: q.t, p: q.p });
+let sel = -1;
+function select(i) {
+  sel = i;
+  dirty++;
+  const tb = $("selBar");
+  if (tb) {
+    tb.classList.toggle("hidden", sel < 0);
+    if (sel >= 0) {
+      const d = S.draw[sel];
+      $("sExt").classList.toggle("on", !!d.ext);
+      $("sExt").style.display = d.type === "hline" ? "none" : "";
+    }
+  }
+  cv.classList.toggle("active", mode !== "none" || sel >= 0);
+}
+function finish(d) {
+  snap();
+  S.draw.push(d);
+  pend = null;
+  save();
+  const m = mode;
+  mode = "none";
+  document.querySelectorAll("#draw [data-m]").forEach((b) => b.classList.remove("on"));
+  select(S.draw.length - 1);
+}
+function selEdit(fn) {
+  if (sel < 0) return;
+  snap();
+  fn(S.draw[sel]);
+  save();
+  select(sel);
+}
+chart.subscribeClick((par) => {
+  if (mode !== "none" || !B || !par.point) return;
+  const i = hitDraw({ x: par.point.x, y: par.point.y });
+  if (i >= 0) select(i);
+});
+let down = null;
 cv.addEventListener("pointerdown", (e) => {
   if (!B) return;
-  const q = pt(e);
+  let q = pt(e);
   if (q.t == null || q.p == null) return;
   e.preventDefault();
+  down = { x: q.x, y: q.y };
+  try {
+    cv.setPointerCapture(e.pointerId);
+  } catch (_) {
+  }
+  const qm = mag(q);
   if (mode === "hline") {
-    snap();
-    S.draw.push({ type: "hline", a: { t: q.t, p: q.p } });
-    save();
+    finish({ type: "hline", a: P2(qm) });
   } else if (mode === "tline") {
-    if (!pend) pend = { type: "tline", a: q, b: q };
+    if (!pend) pend = { type: "tline", a: P2(qm), b: P2(qm) };
     else {
-      pend.b = { t: q.t, p: q.p };
-      snap();
-      S.draw.push(pend);
-      pend = null;
-      save();
+      pend.b = P2(qm);
+      finish(pend);
     }
   } else if (mode === "chan") {
-    if (!pend) pend = { type: "chan", a: q, b: q, off: 0, stage: 1 };
+    if (!pend) pend = { type: "chan", a: P2(qm), b: P2(qm), off: 0, stage: 1 };
     else if (pend.stage === 1) {
-      pend.b = { t: q.t, p: q.p };
+      pend.b = P2(qm);
       pend.stage = 2;
     } else {
       pend.off = q.p - lineP(pend.a, pend.b, q.t);
       delete pend.stage;
-      snap();
-      S.draw.push(pend);
-      pend = null;
-      save();
+      finish(pend);
     }
   } else if (mode === "del") {
     const i = hitDraw(q);
@@ -657,41 +751,64 @@ cv.addEventListener("pointerdown", (e) => {
       S.draw.splice(i, 1);
       save();
     }
-  } else if (mode === "edit") {
-    const pw = cv.clientWidth - 60;
-    for (const d of S.draw) for (const [k, t, p] of handles(d)) {
-      if (Math.hypot((d.type === "hline" ? pw - 20 : X(t)) - q.x, Y(p) - q.y) < 22) {
+  } else {
+    const cand = mode === "edit" ? S.draw.map((d, i2) => i2).reverse() : sel >= 0 ? [sel] : [];
+    for (const i2 of cand) {
+      const d = S.draw[i2], k = hitHandle(d, q);
+      if (k) {
         snap();
         drag = { d, k };
-        cv.setPointerCapture(e.pointerId);
+        if (mode !== "edit") select(i2);
         return;
       }
     }
-    for (const k of ["sl", "tp"]) {
-      const v = S.pos ? S.pos[k] : num(k);
-      if (v != null && Math.abs(Y(v) - q.y) < 16) {
-        drag = { k };
-        cv.setPointerCapture(e.pointerId);
-        return;
-      }
+    const i = hitDraw(q);
+    if (i >= 0 && (mode === "edit" || i === sel)) {
+      const d = S.draw[i];
+      snap();
+      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: P2(d.a), b0: d.b && P2(d.b) };
+      if (mode !== "edit") select(i);
+      return;
     }
+    if (mode === "edit") {
+      for (const k of ["sl", "tp"]) {
+        const v = S.pos ? S.pos[k] : num(k);
+        if (v != null && Math.abs(Y(v) - q.y) < 16) {
+          drag = { k };
+          return;
+        }
+      }
+    } else if (i >= 0) select(i);
+    else select(-1);
   }
 });
 cv.addEventListener("pointermove", (e) => {
   if (!B) return;
   const q = pt(e);
-  if (q.p == null) return;
+  if (q.p == null || q.t == null) return;
   if (pend && pend.stage !== 2 && mode !== "none") {
-    pend.b = { t: q.t, p: q.p };
+    pend.b = P2(mag(q));
+    dirty++;
   } else if (pend && pend.stage === 2) {
     pend.off = q.p - lineP(pend.a, pend.b, q.t);
+    dirty++;
   }
   if (!drag) return;
   const p = +q.p.toFixed(2);
+  dirty++;
   if (drag.d) {
     const d = drag.d;
-    if (drag.k === "c") d.off = q.p - lineP(d.a, d.b, q.t);
-    else d[drag.k] = { t: d.type === "hline" ? d.a.t : q.t, p: q.p };
+    if (drag.k === "body") {
+      const l = ts.coordinateToLogical(q.x);
+      if (l == null) return;
+      const dl2 = l - drag.l0, dp = q.p - drag.p0, mv = (o) => ({ t: d.type === "hline" ? o.t : l2t(t2l(o.t) + dl2), p: o.p + dp });
+      d.a = mv(drag.a0);
+      if (drag.b0) d.b = mv(drag.b0);
+    } else if (drag.k === "c") d.off = q.p - lineP(d.a, d.b, q.t);
+    else {
+      const m = mag(q);
+      d[drag.k] = { t: d.type === "hline" ? d.a.t : m.t, p: m.p };
+    }
   } else {
     if (S.pos) S.pos[drag.k] = p;
     else $(drag.k).value = p;
@@ -699,7 +816,18 @@ cv.addEventListener("pointermove", (e) => {
     updPos();
   }
 });
-cv.addEventListener("pointerup", () => {
+cv.addEventListener("pointerup", (e) => {
+  const q = pt(e);
+  if (pend && down && q.t != null && Math.hypot(q.x - down.x, q.y - down.y) > 15) {
+    if (pend.type === "tline") {
+      pend.b = P2(mag(q));
+      finish(pend);
+    } else if (pend.stage === 1) {
+      pend.b = P2(mag(q));
+      pend.stage = 2;
+    }
+  }
+  down = null;
   if (drag) {
     drag = null;
     save();
@@ -708,7 +836,10 @@ cv.addEventListener("pointerup", () => {
 function setMode(m) {
   mode = mode === m ? "none" : m;
   pend = null;
+  sel = -1;
+  $("selBar").classList.add("hidden");
   document.querySelectorAll("#draw [data-m]").forEach((b) => b.classList.toggle("on", b.dataset.m === mode));
+  dirty++;
   cv.classList.toggle("active", mode !== "none");
 }
 function renderJournal() {
@@ -816,6 +947,7 @@ async function init() {
   S = LS("gr_session") || {};
   S.tf = S.tf || "H1";
   S.draw = S.draw || [];
+  if (S.magnet === void 0) S.magnet = true;
   S.startBal = (_a = S.startBal) != null ? _a : 1e3;
   S.balance = (_b = S.balance) != null ? _b : S.startBal;
   if (S.v !== 3) {
@@ -828,6 +960,7 @@ async function init() {
   S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
   tfBtns();
+  $("bMag").classList.toggle("on", S.magnet);
   $("startBal").value = S.startBal;
   for (const k in S.smc) {
     const el = $("s_" + k);
@@ -879,11 +1012,31 @@ $("tf").onchange = async () => {
 };
 document.querySelectorAll("#draw [data-m]").forEach((b) => b.onclick = () => setMode(b.dataset.m));
 $("bUndo").onclick = undo;
+$("bMag").onclick = () => {
+  S.magnet = !S.magnet;
+  $("bMag").classList.toggle("on", S.magnet);
+  save();
+};
+$("sExt").onclick = () => selEdit((d) => {
+  d.ext = !d.ext;
+});
+document.querySelectorAll("#selBar [data-c]").forEach((b) => b.onclick = () => selEdit((d) => {
+  d.color = b.dataset.c;
+}));
+$("sDel").onclick = () => {
+  if (sel < 0) return;
+  snap();
+  S.draw.splice(sel, 1);
+  save();
+  select(-1);
+};
+$("sOk").onclick = () => select(-1);
 $("bClr").onclick = () => {
   if (confirm("\u0645\u0633\u062D \u0643\u0644 \u0627\u0644\u0631\u0633\u0648\u0645\u0627\u062A\u061F")) {
     if (S.draw.length) snap();
     S.draw = [];
     save();
+    select(-1);
   }
 };
 $("bSmc").onclick = () => $("smcPanel").classList.toggle("hidden");
@@ -951,7 +1104,15 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { snapCtx, quiz: () => LS("gr_quiz") || [], get S() {
+window.GR = { cpx(i) {
+  const r = cv.getBoundingClientRect();
+  return { x: r.left + XI(i), y: r.top + Y(B.H[i]), h: B.H[i] };
+}, hit: (q) => [hitDraw(q), sel >= 0 && hitHandle(S.draw[sel], q), JSON.stringify(drag)], get sel() {
+  return sel;
+}, select, mid(i) {
+  const d = S.draw[i], r = cv.getBoundingClientRect();
+  return { x: r.left + (X(d.a.t) + X(d.b.t)) / 2, y: r.top + (Y(d.a.p) + Y(d.b.p)) / 2, bx: r.left + X(d.b.t), by: r.top + Y(d.b.p) };
+}, snapCtx, quiz: () => LS("gr_quiz") || [], get S() {
   return S;
 }, get B() {
   return B;

@@ -144,9 +144,9 @@ function handles(d){if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=
 let dirty=1,lastKey='';const HIST=[];
 function snap(){HIST.push(JSON.stringify(S.draw));if(HIST.length>50)HIST.shift()}
 function updUndo(){const b=$('bUndo');if(b)b.disabled=!(pend||HIST.length)}
-function undo(){if(pend){if(pend.type==='chan'&&pend.stage===2){pend.stage=1;pend.b=pend.a}else pend=null}else if(HIST.length){S.draw=JSON.parse(HIST.pop());drag=null;save()}dirty++;updUndo()}
+function undo(){if(pend){if(pend.type==='chan'&&pend.stage===2){pend.stage=1;pend.b=pend.a}else pend=null}else if(HIST.length){S.draw=JSON.parse(HIST.pop());drag=null;save();select(sel<S.draw.length?sel:-1)}dirty++;updUndo()}
 function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(draw),500);const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
- const key=B?[w,h,dirty,XI(0),XI(B.n-1),Y(S.price),Y(S.price*1.01),mode,S.draw.length,JSON.stringify(pend),drag?JSON.stringify(S.draw):''].join('|'):'x'+dirty;
+ const key=B?[w,h,dirty,XI(0),XI(B.n-1),Y(S.price),Y(S.price*1.01),mode,sel,S.draw.length,JSON.stringify(pend),drag?JSON.stringify(S.draw):''].join('|'):'x'+dirty;
  if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;updUndo();
  if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr}
  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);if(!B)return requestAnimationFrame(draw);
@@ -169,29 +169,57 @@ function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(d
    for(const [o,lab,c] of [[s.top,s.trend===-1?'Strong High':'Weak High','#f23645'],[s.bot,s.trend===1?'Strong Low':'Weak Low','#089981']]){
     const x1=XI(o.i),y=Y(o.p);if(x1==null||y==null)continue;cx.strokeStyle=c;cx.beginPath();cx.moveTo(x1,y);cx.lineTo(xr,y);cx.stroke();txt(lab,xr-70,y+(c==='#089981'?12:-3),c);}}
  }
- for(const d of S.draw.concat(pend?[pend]:[])){cx.strokeStyle=d===pend?'#fc0':'#4aa3ff';cx.lineWidth=2;
-  for(const [a,b] of segs(d)){const x1=d.type==='hline'?0:X(a.t),x2=d.type==='hline'?pw:X(b.t);cx.beginPath();cx.moveTo(x1,Y(a.p));cx.lineTo(x2,Y(b.p));cx.stroke();}
-  if(d.type==='chan'){cx.fillStyle='rgba(74,163,255,.08)';cx.beginPath();cx.moveTo(X(d.a.t),Y(d.a.p));cx.lineTo(X(d.b.t),Y(d.b.p));cx.lineTo(X(d.b.t),Y(d.b.p+d.off));cx.lineTo(X(d.a.t),Y(d.a.p+d.off));cx.fill();}
-  if(mode==='edit'&&d!==pend)for(const [,t,p] of handles(d)){cx.fillStyle='#fff';cx.beginPath();cx.arc(d.type==='hline'?pw-20:X(t),Y(p),7,0,7);cx.fill();}}
+ for(const d of S.draw.concat(pend?[pend]:[])){const col=d===pend?'#fc0':(d.color||'#4aa3ff');cx.strokeStyle=col;cx.lineWidth=d===S.draw[sel]?3:2;
+  for(const g of pix(d,pw)){if(g.some(v=>v==null))continue;cx.beginPath();cx.moveTo(g[0],g[1]);cx.lineTo(g[2],g[3]);cx.stroke();}
+  if(d.type==='chan'&&d.b){const P=[X(d.a.t),Y(d.a.p),X(d.b.t),Y(d.b.p),Y(d.b.p+d.off),Y(d.a.p+d.off)];if(!P.some(v=>v==null)){cx.globalAlpha=.1;cx.fillStyle=col;cx.beginPath();cx.moveTo(P[0],P[1]);cx.lineTo(P[2],P[3]);cx.lineTo(P[2],P[4]);cx.lineTo(P[0],P[5]);cx.fill();cx.globalAlpha=1;}}
+  if(d!==pend&&(mode==='edit'||d===S.draw[sel]))for(const [,t,p] of handles(d)){const hx=d.type==='hline'?pw-20:X(t),hy=Y(p);if(hx==null||hy==null)continue;cx.fillStyle='#000';cx.strokeStyle=col;cx.lineWidth=2;cx.beginPath();cx.arc(hx,hy,8,0,7);cx.fill();cx.stroke();}}
  cx.restore();requestAnimationFrame(draw);}
 function dSeg(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,L=dx*dx+dy*dy||1;let u=((px-x1)*dx+(py-y1)*dy)/L;u=Math.max(0,Math.min(1,u));return Math.hypot(px-x1-u*dx,py-y1-u*dy)}
-function hitDraw(q){for(let i=S.draw.length-1;i>=0;i--){const d=S.draw[i];for(const [a,b] of segs(d)){const x1=d.type==='hline'?0:X(a.t),x2=d.type==='hline'?9999:X(b.t);if(dSeg(q.x,q.y,x1,Y(a.p),x2,Y(b.p))<16)return i}}return -1}
-cv.addEventListener('pointerdown',e=>{if(!B)return;const q=pt(e);if(q.t==null||q.p==null)return;e.preventDefault();
- if(mode==='hline'){snap();S.draw.push({type:'hline',a:{t:q.t,p:q.p}});save();}
- else if(mode==='tline'){if(!pend)pend={type:'tline',a:q,b:q};else{pend.b={t:q.t,p:q.p};snap();S.draw.push(pend);pend=null;save()}}
- else if(mode==='chan'){if(!pend)pend={type:'chan',a:q,b:q,off:0,stage:1};else if(pend.stage===1){pend.b={t:q.t,p:q.p};pend.stage=2}
-  else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;snap();S.draw.push(pend);pend=null;save()}}
+// pixel segments of a drawing (with extend-right)
+function pix(d,pw){if(d.type==='hline'){const y=Y(d.a.p);return [[0,y,pw,y]]}
+ const out=[];for(const [a,b] of segs(d)){let x1=X(a.t),y1=Y(a.p),x2=X(b.t),y2=Y(b.p);
+  if(d.ext&&x1!=null&&x2!=null&&y1!=null&&y2!=null&&Math.abs(x2-x1)>0.5){const k=(pw+50-x2)/(x2-x1);if(k>0){x2+=k*(x2-x1);y2+=k*(y2-y1)}}out.push([x1,y1,x2,y2])}return out;}
+function hitDraw(q){const pw=cv.clientWidth-60;for(let i=S.draw.length-1;i>=0;i--){for(const g of pix(S.draw[i],pw)){if(g.some(v=>v==null))continue;if(dSeg(q.x,q.y,g[0],g[1],g[2],g[3])<18)return i}}return -1}
+function hitHandle(d,q){const pw=cv.clientWidth-60;for(const [k,t,p] of handles(d)){const hx=d.type==='hline'?pw-20:X(t),hy=Y(p);if(hx!=null&&hy!=null&&Math.hypot(hx-q.x,hy-q.y)<24)return k}return null}
+// magnet: snap to nearest OHLC of the candle under the finger (within 30px)
+function mag(q){if(!S.magnet||!B||q.t==null)return q;const l=ts.coordinateToLogical(q.x);if(l==null)return q;const i=Math.round(l);if(i<0||i>=B.n)return q;
+ let best=null,bd=30;for(const v of [B.O[i],B.H[i],B.L[i],B.C[i]]){const y=Y(v);if(y==null)continue;const dd=Math.abs(y-q.y);if(dd<bd){bd=dd;best=v}}
+ return best==null?q:{x:XI(i),y:Y(best),t:B.U[i],p:best};}
+const P2=q=>({t:q.t,p:q.p});
+let sel=-1;
+function select(i){sel=i;dirty++;const tb=$('selBar');if(tb){tb.classList.toggle('hidden',sel<0);if(sel>=0){const d=S.draw[sel];$('sExt').classList.toggle('on',!!d.ext);$('sExt').style.display=d.type==='hline'?'none':''}}
+ cv.classList.toggle('active',mode!=='none'||sel>=0);}
+function finish(d){snap();S.draw.push(d);pend=null;save();const m=mode;mode='none';document.querySelectorAll('#draw [data-m]').forEach(b=>b.classList.remove('on'));select(S.draw.length-1);}
+function selEdit(fn){if(sel<0)return;snap();fn(S.draw[sel]);save();select(sel);}
+chart.subscribeClick(par=>{if(mode!=='none'||!B||!par.point)return;const i=hitDraw({x:par.point.x,y:par.point.y});if(i>=0)select(i);});
+let down=null;
+cv.addEventListener('pointerdown',e=>{if(!B)return;let q=pt(e);if(q.t==null||q.p==null)return;e.preventDefault();down={x:q.x,y:q.y};
+ try{cv.setPointerCapture(e.pointerId)}catch(_){}
+ const qm=mag(q);
+ if(mode==='hline'){finish({type:'hline',a:P2(qm)});}
+ else if(mode==='tline'){if(!pend)pend={type:'tline',a:P2(qm),b:P2(qm)};else{pend.b=P2(qm);finish(pend)}}
+ else if(mode==='chan'){if(!pend)pend={type:'chan',a:P2(qm),b:P2(qm),off:0,stage:1};else if(pend.stage===1){pend.b=P2(qm);pend.stage=2}
+  else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;finish(pend)}}
  else if(mode==='del'){const i=hitDraw(q);if(i>=0){snap();S.draw.splice(i,1);save()}}
- else if(mode==='edit'){const pw=cv.clientWidth-60;
-  for(const d of S.draw)for(const [k,t,p] of handles(d)){if(Math.hypot((d.type==='hline'?pw-20:X(t))-q.x,Y(p)-q.y)<22){snap();drag={d,k};cv.setPointerCapture(e.pointerId);return}}
-  for(const k of ['sl','tp']){const v=S.pos?S.pos[k]:num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};cv.setPointerCapture(e.pointerId);return}}}});
-cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null)return;
- if(pend&&pend.stage!==2&&mode!=='none'){pend.b={t:q.t,p:q.p}}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t)}
- if(!drag)return;const p=+q.p.toFixed(2);
- if(drag.d){const d=drag.d;if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else d[drag.k]={t:d.type==='hline'?d.a.t:q.t,p:q.p};}
+ else{ // edit mode or a selected drawing
+  const cand=mode==='edit'?S.draw.map((d,i)=>i).reverse():(sel>=0?[sel]:[]);
+  for(const i of cand){const d=S.draw[i],k=hitHandle(d,q);if(k){snap();drag={d,k};if(mode!=='edit')select(i);return}}
+  const i=hitDraw(q);
+  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:P2(d.a),b0:d.b&&P2(d.b)};if(mode!=='edit')select(i);return}
+  if(mode==='edit'){for(const k of ['sl','tp']){const v=S.pos?S.pos[k]:num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};return}}}
+  else if(i>=0)select(i);else select(-1);}});
+cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q.t==null)return;
+ if(pend&&pend.stage!==2&&mode!=='none'){pend.b=P2(mag(q));dirty++}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t);dirty++}
+ if(!drag)return;const p=+q.p.toFixed(2);dirty++;
+ if(drag.d){const d=drag.d;
+  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}
+  else if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else{const m=mag(q);d[drag.k]={t:d.type==='hline'?d.a.t:m.t,p:m.p};}}
  else{if(S.pos)S.pos[drag.k]=p;else $(drag.k).value=p;updLines();updPos();}});
-cv.addEventListener('pointerup',()=>{if(drag){drag=null;save()}});
-function setMode(m){mode=mode===m?'none':m;pend=null;document.querySelectorAll('#draw [data-m]').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
+cv.addEventListener('pointerup',e=>{const q=pt(e);
+ // press-drag-release drawing of a trendline / first channel edge
+ if(pend&&down&&q.t!=null&&Math.hypot(q.x-down.x,q.y-down.y)>15){if(pend.type==='tline'){pend.b=P2(mag(q));finish(pend)}else if(pend.stage===1){pend.b=P2(mag(q));pend.stage=2}}
+ down=null;if(drag){drag=null;save()}});
+function setMode(m){mode=mode===m?'none':m;pend=null;sel=-1;$('selBar').classList.add('hidden');document.querySelectorAll('#draw [data-m]').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));dirty++;
  cv.classList.toggle('active',mode!=='none');}
 // ---------- journal / stats ----------
 function renderJournal(){const j=journal(),n=j.length,w=j.filter(t=>t.pnl>0).length,Rs=j.filter(t=>t.R!=null).map(t=>t.R),tot=j.reduce((a,t)=>a+t.pnl,0);
@@ -218,11 +246,11 @@ function randStart(){const last=Date.parse(MAN.last)/1000,first=last-3*365*86400
 async function init(){
  MAN=await (await fetch('data/manifest.json')).json();
  $('range').textContent=ds(Date.parse(MAN.first)/1000)+' → '+ds(Date.parse(MAN.last)/1000);
- S=LS('gr_session')||{};S.tf=S.tf||'H1';S.draw=S.draw||[];S.startBal=S.startBal??1000;S.balance=S.balance??S.startBal;
+ S=LS('gr_session')||{};S.tf=S.tf||'H1';S.draw=S.draw||[];if(S.magnet===undefined)S.magnet=true;S.startBal=S.startBal??1000;S.balance=S.balance??S.startBal;
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
  if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;tfBtns();$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
@@ -235,7 +263,12 @@ document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.
 $('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('bUndo').onclick=undo;
-$('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save()}};
+$('bMag').onclick=()=>{S.magnet=!S.magnet;$('bMag').classList.toggle('on',S.magnet);save()};
+$('sExt').onclick=()=>selEdit(d=>{d.ext=!d.ext});
+document.querySelectorAll('#selBar [data-c]').forEach(b=>b.onclick=()=>selEdit(d=>{d.color=b.dataset.c}));
+$('sDel').onclick=()=>{if(sel<0)return;snap();S.draw.splice(sel,1);save();select(-1)};
+$('sOk').onclick=()=>select(-1);
+$('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save();select(-1)}};
 $('bSmc').onclick=()=>$('smcPanel').classList.toggle('hidden');
 $('bBuy').onclick=()=>openPos('buy');$('bSell').onclick=()=>openPos('sell');
 $('bClose').onclick=()=>{if(S.pos)closePos(S.price,'يدوي')};
@@ -250,7 +283,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
