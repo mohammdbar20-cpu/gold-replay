@@ -1505,6 +1505,31 @@ async function init() {
   requestAnimationFrame(draw);
   toLatest();
 }
+function rollbackTo(to) {
+  const cut = ds(to);
+  S.ps = S.ps.filter((p) => p.open <= to);
+  const j = journal(), keep = [], gone = [];
+  for (const t of j) {
+    const ct = t.closeT != null ? t.closeT : null;
+    ((ct != null ? ct > to : t.close > cut) ? gone : keep).push(t);
+  }
+  if (gone.length) {
+    gone.forEach((t) => {
+      S.balance = +(S.balance - t.pnl).toFixed(2);
+    });
+    for (const last of gone) {
+      if (last.openT == null || last.openT > to) continue;
+      const ex = S.ps.find((x) => x.id === (last.pid || last.id));
+      if (ex) {
+        ex.lots = +(ex.lots + last.lots).toFixed(2);
+        continue;
+      }
+      S.ps.push({ id: last.pid || last.id, sl0: last.sl0, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
+    }
+    setJournal(keep);
+    renderJournal();
+  }
+}
 async function stepBack(auto) {
   if (Q) return;
   if (!auto) {
@@ -1538,28 +1563,7 @@ async function stepBack(auto) {
       return;
     }
     const cut = ds(to);
-    S.ps = S.ps.filter((p) => p.open <= to);
-    const j = journal(), keep = [], gone = [];
-    for (const t of j) {
-      const ct = t.closeT != null ? t.closeT : null;
-      ((ct != null ? ct > to : t.close > cut) ? gone : keep).push(t);
-    }
-    if (gone.length) {
-      gone.forEach((t) => {
-        S.balance = +(S.balance - t.pnl).toFixed(2);
-      });
-      for (const last of gone) {
-        if (last.openT == null || last.openT > to) continue;
-        const ex = S.ps.find((x) => x.id === (last.pid || last.id));
-        if (ex) {
-          ex.lots = +(ex.lots + last.lots).toFixed(2);
-          continue;
-        }
-        S.ps.push({ id: last.pid || last.id, sl0: last.sl0, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
-      }
-      setJournal(keep);
-      renderJournal();
-    }
+    rollbackTo(to);
     S.cur = to;
     await render();
     save();
@@ -2450,6 +2454,133 @@ $("bPlan").onclick = () => openTemplate("plan");
     return o;
   };
 }
+const MONTHS = ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"];
+function berlinToUtc(y, mo, d, h, mi) {
+  const g = Date.UTC(y, mo, d, h, mi) / 1e3;
+  let t = g - off(g);
+  t = g - off(t);
+  return t;
+}
+function berlinParts(t) {
+  const d = new Date((t + off(t)) * 1e3);
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes() };
+}
+async function firstM1From(T, lim) {
+  const M = await m1(T, T + (lim || 10) * 86400);
+  let i = bs(M.t, T - 1, M.n) + 1;
+  return i < M.n && M.t[i] >= T ? M.t[i] : null;
+}
+function dateLocked() {
+  return !!(window.__course || Q);
+}
+function openDatePicker() {
+  if (dateLocked()) return status("\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0623\u062B\u0646\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A/\u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631");
+  stopPlay();
+  const y0 = +MAN.first.slice(0, 4), y1 = +MAN.last.slice(0, 4), c = berlinParts(S.cur);
+  let ys = "";
+  for (let y = y0; y <= y1; y++) ys += `<option value="${y}"${y === c.y ? " selected" : ""}>${y}</option>`;
+  const ms = MONTHS.map((n, i) => `<option value="${i}"${i === c.m ? " selected" : ""}>${n}</option>`).join("");
+  const m = openModal(`<button class="mx" aria-label="\u0625\u063A\u0644\u0627\u0642">\u2715</button><h3>\u{1F4C5} \u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u062A\u0627\u0631\u064A\u062E</h3>
+  <div class="dpk"><label>\u0627\u0644\u0633\u0646\u0629<select id="dpY">${ys}</select></label><label>\u0627\u0644\u0634\u0647\u0631<select id="dpM">${ms}</select></label><label>\u0627\u0644\u064A\u0648\u0645<select id="dpD"></select></label>
+  <label>\u0627\u0644\u0648\u0642\u062A (\u0628\u0631\u0644\u064A\u0646)<input id="dpT" type="time" value="00:00" step="60"></label></div>
+  <div class="dpr" id="dpRange"></div><div class="dpb"><button id="dpOk" class="pri">\u2714 \u062A\u0623\u0643\u064A\u062F</button></div>`, "dp");
+  const fillD = () => {
+    const y = +$("dpY").value, mo = +$("dpM").value, n = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate(), cur = +$("dpD").value || c.d;
+    let o = "";
+    for (let d = 1; d <= n; d++) {
+      const wd = new Date(Date.UTC(y, mo, d)).getUTCDay();
+      o += `<option value="${d}"${d === Math.min(cur, n) ? " selected" : ""}>${d}${wd === 6 || wd === 0 ? " \xB7" : ""}</option>`;
+    }
+    $("dpD").innerHTML = o;
+  };
+  $("dpY").onchange = fillD;
+  $("dpM").onchange = fillD;
+  fillD();
+  $("dpRange").textContent = ds(Date.parse(MAN.first) / 1e3).slice(0, 10) + " \u2192 " + ds(Date.parse(MAN.last) / 1e3).slice(0, 10);
+  $("dpOk").onclick = () => {
+    const [h, mi] = ($("dpT").value || "00:00").split(":").map(Number);
+    const t = berlinToUtc(+$("dpY").value, +$("dpM").value, +$("dpD").value, h || 0, mi || 0);
+    closeModal();
+    jumpTo(t);
+  };
+  return m;
+}
+async function jumpTo(T) {
+  if (dateLocked()) return status("\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0623\u062B\u0646\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A/\u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631");
+  stopPlay();
+  for (let i = 0; busy && i < 200; i++) await new Promise((r) => setTimeout(r, 50));
+  if (busy) return;
+  const first = Date.parse(MAN.first) / 1e3, last = Date.parse(MAN.last) / 1e3;
+  let msg = "";
+  busy = true;
+  let to;
+  try {
+    if (T < first) {
+      T = first;
+      msg = "\u0642\u0628\u0644 \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0623\u0648\u0644 \u064A\u0648\u0645 \u0645\u062A\u0627\u062D";
+    }
+    if (T > last) {
+      to = last;
+      msg = "\u0628\u0639\u062F \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0622\u062E\u0631 \u064A\u0648\u0645 \u0645\u062A\u0627\u062D";
+    } else {
+      to = await firstM1From(T, 12);
+      if (to == null) {
+        to = await lastM1Before(last + 60);
+        msg = "\u0628\u0639\u062F \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0622\u062E\u0631 \u064A\u0648\u0645 \u0645\u062A\u0627\u062D";
+      } else if (!msg && berlinParts(to).d !== berlinParts(T).d && to - T > 3 * 3600) msg = "\u0639\u0637\u0644\u0629/\u0646\u0647\u0627\u064A\u0629 \u0623\u0633\u0628\u0648\u0639 \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0623\u0648\u0644 \u064A\u0648\u0645 \u062A\u062F\u0627\u0648\u0644 \u0628\u0639\u062F\u0647\u0627";
+    }
+  } finally {
+    busy = false;
+  }
+  if (to == null) return status("\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A");
+  if (to > S.cur && S.ps.length) {
+    const ok = await new Promise((res) => {
+      const m = openModal(`<h3>\u26A0\uFE0F \u0635\u0641\u0642\u0627\u062A \u0645\u0641\u062A\u0648\u062D\u0629</h3><p>\u0644\u062F\u064A\u0643 \u0635\u0641\u0642\u0627\u062A \u0645\u0641\u062A\u0648\u062D\u0629 (${S.ps.length}). \u0625\u063A\u0644\u0627\u0642\u0647\u0627 \u0628\u0633\u0639\u0631 \u0627\u0644\u0642\u0641\u0632\u0629\u061F</p><div class="dpb"><button id="jpNo">\u0625\u0644\u063A\u0627\u0621</button><button id="jpYes" class="pri">\u2714 \u0625\u063A\u0644\u0627\u0642 \u0648\u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644</button></div>`, "dp");
+      m.onclick = (e) => {
+        if (e.target === m) {
+          closeModal();
+          res(false);
+        }
+      };
+      $("jpNo").onclick = () => {
+        closeModal();
+        res(false);
+      };
+      $("jpYes").onclick = () => {
+        closeModal();
+        res(true);
+      };
+    });
+    if (!ok) return status("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644");
+  }
+  busy = true;
+  try {
+    if (to < S.cur) rollbackTo(to);
+    S.cur = to;
+    mPrev = null;
+    emaPrev = null;
+    await render();
+    if (S.ps.length) {
+      const px = S.price;
+      for (const p of S.ps.slice()) closePos(px, "\u0642\u0641\u0632\u0629 \u062A\u0627\u0631\u064A\u062E", to, p);
+      renderJournal();
+    }
+    save();
+    updLines();
+    updPos();
+    toLatest();
+    dirty++;
+    status((msg ? msg + " \xB7 " : "") + "\u{1F4C5} \u0627\u0646\u062A\u0642\u0627\u0644: " + ds(to));
+  } catch (e) {
+    console.error(e);
+    status("\u062E\u0637\u0623: " + e.message);
+  } finally {
+    busy = false;
+  }
+}
+$("bDate").onclick = openDatePicker;
+window.GR.jumpTo = (t) => jumpTo(t);
+window.GR.berlinToUtc = berlinToUtc;
 let CRS = null, CP = null, CMAIN = null, CITEM = null, CSTATE = null;
 const L_ = () => window.I18N && I18N.de() ? "de" : "ar";
 const TX = (o) => o == null ? "" : typeof o === "string" ? o : o[L_()] || o.ar || "";

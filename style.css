@@ -198,3 +198,13 @@ body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
 .egrid b,.ser-bar b,.cs-res,.pitem b{unicode-bidi:plaintext}.egrid b{display:inline-block;direction:ltr}
 .mbar{direction:ltr}
 .pitem,#pos,#acct{overflow-wrap:anywhere;max-width:100%}
+
+.hdate{background:var(--p2,#1e222d);border:1px solid var(--bd);border-radius:8px;padding:2px 8px;font-size:16px;line-height:1.4;min-height:30px;cursor:pointer}
+#modal.dp .mbox{max-width:360px}
+.dpk{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.dpk label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#aaa}
+.dpk select,.dpk input{font-size:16px;padding:8px;min-height:42px;background:#111;color:#eee;border:1px solid var(--bd);border-radius:8px;width:100%;box-sizing:border-box}
+.dpr{font-size:12px;color:#888;direction:ltr;text-align:center}
+.dpb{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.dpb button{min-height:44px;padding:0 16px;border-radius:10px;font-size:15px;border:1px solid var(--bd);background:#222;color:#eee}
+.dpb button.pri{background:#9afc41;color:#000;font-weight:700;border-color:#9afc41;flex:1}

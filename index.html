@@ -7,10 +7,10 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=29"></head><body>
+<link rel="stylesheet" href="style.css?v=30"></head><body>
 <div id="app">
 <div id="top">
-<header><span class="brand">🟡 <b>الغرفة</b><small>XAUUSD</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
+<header><span class="brand">🟡 <b>الغرفة</b><small>XAUUSD</small></span><span id="clock">—</span><button id="bDate" class="hdate" title="انتقال إلى تاريخ" aria-label="انتقال إلى تاريخ">📅</button> <span id="price"></span> <span id="status"></span></header>
 <div class="row" id="tfRow">
  <select id="tf" hidden><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
  <div class="seg"><button class="tfb" data-tf="D1" title="يومي">يوم</button><button class="tfb" data-tf="H4" title="4 ساعات">4س</button><button class="tfb" data-tf="H1" title="ساعة">1س</button><button class="tfb" data-tf="M15" title="15 دقيقة">15د</button></div>
@@ -89,5 +89,5 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="i18n.js?v=29"></script><div id="modal" class="hidden"></div>
-<script src="app.js?v=29"></script></body></html>
+<script src="i18n.js?v=30"></script><div id="modal" class="hidden"></div>
+<script src="app.js?v=30"></script></body></html>

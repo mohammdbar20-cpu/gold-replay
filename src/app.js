@@ -366,12 +366,8 @@ async function init(){
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
  if(S.speed&&[...$('speed').options].some(o=>o.value==S.speed))$('speed').value=S.speed;renderJournal();costUI();requestAnimationFrame(draw);toLatest();}
 // ---------- step back one day ----------
-async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50))}if(busy)return;busy=true;try{
- const first=Date.parse(MAN.first)/1000;let T;
- if(auto==='bar'){const A=B.A,k=B.k;const st=A.t[k]<S.cur?A.t[k]:(k>0?A.t[k-1]:null);if(st==null){status('بداية البيانات');stopPlay();return}T=st;}else T=S.cur-86400;
- if(T<=first+86400){status('بداية البيانات');stopPlay();return}
- const to=await lastM1Before(T);if(to==null||to<=first){status('بداية البيانات');stopPlay();return}
- const cut=ds(to);
+// undo everything after time `to` (positions opened later dropped, trades closed later reverted/reopened)
+function rollbackTo(to){ const cut=ds(to);
  // open position opened after the new cursor -> drop it
  S.ps=S.ps.filter(p=>p.open<=to);
  // trades closed after the new cursor -> remove; reopen the latest one if it was opened before the cursor
@@ -379,6 +375,13 @@ async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&
  if(gone.length){gone.forEach(t=>{S.balance=+(S.balance-t.pnl).toFixed(2)});
   for(const last of gone){if(last.openT==null||last.openT>to)continue;const ex=S.ps.find(x=>x.id===(last.pid||last.id));if(ex){ex.lots=+(ex.lots+last.lots).toFixed(2);continue}S.ps.push({id:last.pid||last.id,sl0:last.sl0,side:last.side,quick:last.quick,entry:last.entry,sl:last.sl,tp:last.tp,lots:last.lots,open:last.openT,tf:last.tf,why:last.why,feel:last.feeling,conf:last.conf,bal0:last.bal0!=null?last.bal0:S.balance,ctx:last.ctx});}
   setJournal(keep);renderJournal();}
+}
+async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50))}if(busy)return;busy=true;try{
+ const first=Date.parse(MAN.first)/1000;let T;
+ if(auto==='bar'){const A=B.A,k=B.k;const st=A.t[k]<S.cur?A.t[k]:(k>0?A.t[k-1]:null);if(st==null){status('بداية البيانات');stopPlay();return}T=st;}else T=S.cur-86400;
+ if(T<=first+86400){status('بداية البيانات');stopPlay();return}
+ const to=await lastM1Before(T);if(to==null||to<=first){status('بداية البيانات');stopPlay();return}
+ const cut=ds(to);rollbackTo(to);
  S.cur=to;await render();save();updLines();updPos();if(auto!=='bar')status('⏪ رجوع يوم: '+cut);
 }catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
 $('bBack').onclick=()=>stepBack();

@@ -73,3 +73,49 @@ function openTemplate(kind,onSave){kind=kind||'plan';const sel=(id,o)=>'<select 
 $('bRuin').onclick=()=>openRuin();$('bPlan').onclick=()=>openTemplate('plan');
 // coach export additions
 {const base=coachData;coachData=function(){const o=base();const j=journal();o.edgeStats=edgeCalc(j);o.costs=costCfg();o.sessionTemplates=plans();o.course=(()=>{const c=LS('gr_course');return c?{xp:c.xp,streak:c.streak,done:Object.keys(c.done||{}).length,boss:c.boss,series:c.series||null}:null})();o.management=j.filter(t=>t.be||t.trail||t.partial).length;return o}}
+
+// ---------- go to date ----------
+const MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+function berlinToUtc(y,mo,d,h,mi){const g=Date.UTC(y,mo,d,h,mi)/1000;let t=g-off(g);t=g-off(t);return t}
+function berlinParts(t){const d=new Date((t+off(t))*1000);return {y:d.getUTCFullYear(),m:d.getUTCMonth(),d:d.getUTCDate(),h:d.getUTCHours(),mi:d.getUTCMinutes()}}
+async function firstM1From(T,lim){const M=await m1(T,T+(lim||10)*86400);let i=bs(M.t,T-1,M.n)+1;return i<M.n&&M.t[i]>=T?M.t[i]:null}
+function dateLocked(){return !!(window.__course||Q)}
+function openDatePicker(){
+ if(dateLocked())return status('غير متاح أثناء التحدي/الاختبار');
+ stopPlay();
+ const y0=+MAN.first.slice(0,4),y1=+MAN.last.slice(0,4),c=berlinParts(S.cur);
+ let ys='';for(let y=y0;y<=y1;y++)ys+=`<option value="${y}"${y===c.y?' selected':''}>${y}</option>`;
+ const ms=MONTHS.map((n,i)=>`<option value="${i}"${i===c.m?' selected':''}>${n}</option>`).join('');
+ const m=openModal(`<button class="mx" aria-label="إغلاق">✕</button><h3>📅 انتقال إلى تاريخ</h3>
+  <div class="dpk"><label>السنة<select id="dpY">${ys}</select></label><label>الشهر<select id="dpM">${ms}</select></label><label>اليوم<select id="dpD"></select></label>
+  <label>الوقت (برلين)<input id="dpT" type="time" value="00:00" step="60"></label></div>
+  <div class="dpr" id="dpRange"></div><div class="dpb"><button id="dpOk" class="pri">✔ تأكيد</button></div>`,'dp');
+ const fillD=()=>{const y=+$('dpY').value,mo=+$('dpM').value,n=new Date(Date.UTC(y,mo+1,0)).getUTCDate(),cur=+$('dpD').value||c.d;let o='';
+  for(let d=1;d<=n;d++){const wd=new Date(Date.UTC(y,mo,d)).getUTCDay();o+=`<option value="${d}"${d===Math.min(cur,n)?' selected':''}>${d}${wd===6||wd===0?' ·':''}</option>`}$('dpD').innerHTML=o};
+ $('dpY').onchange=fillD;$('dpM').onchange=fillD;fillD();
+ $('dpRange').textContent=ds(Date.parse(MAN.first)/1000).slice(0,10)+' → '+ds(Date.parse(MAN.last)/1000).slice(0,10);
+ $('dpOk').onclick=()=>{const [h,mi]=($('dpT').value||'00:00').split(':').map(Number);const t=berlinToUtc(+$('dpY').value,+$('dpM').value,+$('dpD').value,h||0,mi||0);closeModal();jumpTo(t)};
+ return m}
+async function jumpTo(T){
+ if(dateLocked())return status('غير متاح أثناء التحدي/الاختبار');
+ stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50));if(busy)return;
+ const first=Date.parse(MAN.first)/1000,last=Date.parse(MAN.last)/1000;let msg='';
+ busy=true;let to;try{
+  if(T<first){T=first;msg='قبل بداية البيانات — تم الانتقال إلى أول يوم متاح'}
+  if(T>last){to=last;msg='بعد نهاية البيانات — تم الانتقال إلى آخر يوم متاح'}
+  else{to=await firstM1From(T,12);if(to==null){to=await lastM1Before(last+60);msg='بعد نهاية البيانات — تم الانتقال إلى آخر يوم متاح'}
+   else if(!msg&&berlinParts(to).d!==berlinParts(T).d&&to-T>3*3600)msg='عطلة/نهاية أسبوع — تم الانتقال إلى أول يوم تداول بعدها'}
+ }finally{busy=false}
+ if(to==null)return status('لا توجد بيانات');
+ if(to>S.cur&&S.ps.length){const ok=await new Promise(res=>{const m=openModal(`<h3>⚠️ صفقات مفتوحة</h3><p>لديك صفقات مفتوحة (${S.ps.length}). إغلاقها بسعر القفزة؟</p><div class="dpb"><button id="jpNo">إلغاء</button><button id="jpYes" class="pri">✔ إغلاق والانتقال</button></div>`,'dp');
+   m.onclick=e=>{if(e.target===m){closeModal();res(false)}};$('jpNo').onclick=()=>{closeModal();res(false)};$('jpYes').onclick=()=>{closeModal();res(true)}});
+  if(!ok)return status('تم إلغاء الانتقال');}
+ busy=true;try{
+  if(to<S.cur)rollbackTo(to);
+  S.cur=to;mPrev=null;emaPrev=null;await render();
+  if(S.ps.length){const px=S.price;for(const p of S.ps.slice())closePos(px,'قفزة تاريخ',to,p);renderJournal()}
+  save();updLines();updPos();toLatest();dirty++;
+  status((msg?msg+' · ':'')+'📅 انتقال: '+ds(to));
+ }catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
+$('bDate').onclick=openDatePicker;
+window.GR.jumpTo=t=>jumpTo(t);window.GR.berlinToUtc=berlinToUtc;
