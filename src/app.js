@@ -1,3 +1,4 @@
+const tr=s=>window.I18N?I18N.tr(s):s;
 'use strict';
 const $=id=>document.getElementById(id);
 const TFS={M5:300,M15:900,H1:3600,H4:14400,D1:86400};
@@ -200,7 +201,7 @@ function drawPos(d,pw){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v
  cx.fillStyle=res==='SL'?'rgba(242,54,69,.5)':'rgba(242,54,69,.22)';cx.fillRect(b.x1,Math.min(b.ye,b.ys),w,Math.abs(b.ys-b.ye));
  cx.strokeStyle='#ddd';cx.lineWidth=1;cx.setLineDash(d.st==='draft'?[4,3]:[]);cx.beginPath();cx.moveTo(b.x1,b.ye);cx.lineTo(b.x2,b.ye);cx.stroke();cx.setLineDash([]);
  const rr=Math.abs(d.tp-d.e)/(Math.abs(d.e-d.sl)||1),lots=d.lots||posLots(d),risk=Math.abs(d.e-d.sl)*OZ*lots,rew=Math.abs(d.tp-d.e)*OZ*lots,up=d.yt<d.ye;
- const lab=(t,x,y,bg)=>{cx.font='bold 11px system-ui,sans-serif';const tw=cx.measureText(t).width+10;cx.fillStyle=bg;cx.fillRect(x,y-8,tw,16);cx.fillStyle='#fff';cx.fillText(t,x+5,y+4)};
+ const lab=(t0,x,y,bg)=>{const t=tr(t0);cx.font='bold 11px system-ui,sans-serif';const tw=cx.measureText(t).width+10;cx.fillStyle=bg;cx.fillRect(x,y-8,tw,16);cx.fillStyle='#fff';cx.fillText(t,x+5,y+4)};
  const xl=Math.min(b.x1,b.x2)+2;
  lab('الهدف '+d.tp.toFixed(2)+'  +'+Math.abs(d.tp-d.e).toFixed(2)+'  ($'+rew.toFixed(0)+')  RR 1:'+rr.toFixed(2),xl,b.yt+(b.yt<b.ye?-10:10),'#087a66');
  lab('الوقف '+d.sl.toFixed(2)+'  -'+Math.abs(d.e-d.sl).toFixed(2)+'  | '+lots.toFixed(2)+' لوت | مخاطرة $'+risk.toFixed(0),xl,b.ys+(b.ys>b.ye?10:-10),'#a3202e');
@@ -399,13 +400,13 @@ $('qGo').onclick=async()=>{if(!Q||busy)return;if(!Q.bias)return alert('اختر 
  const ok=qs.filter(q=>q.biasCorrect).length;
  $('qRes').innerHTML=`${biasOK?'✅ الاتجاه صحيح':'❌ الاتجاه خطأ'} | الحركة ${rec.move}$ | الصفقة: ${({TP:'وصلت الهدف',SL:'ضرب الوقف',open:'ما زالت مفتوحة',not_triggered:'لم تتفعل'})[out]} ${R!=null?'('+R+'R)':''} | النقاط ${score}<br>إجمالي الاختبارات ${qs.length} — دقة الاتجاه ${(ok/qs.length*100).toFixed(0)}%`;
  if(Q.ch&&!Q.done){const c=(CH||[]).find(x=>x.id===Q.ch);Q.done=1;S.chal=S.chal||{};S.chal[Q.ch]={score,biasOK,outcome:out,R,date:ds(t0),at:new Date().toISOString()};
-  if(c)$('qRes').innerHTML+='<div class="expl">📘 '+c.expl+'</div>';}
+  if(c)$('qRes').innerHTML+='<div class="expl">📘 '+(window.I18N&&I18N.de()&&c.expl_de?c.expl_de:c.expl)+'</div>';}
  Q.bias=null;save();};
 // ---------- coach export ----------
 function coachData(){const j=journal(),qs=LS('gr_quiz')||[],w=j.filter(t=>t.pnl>0).length,Rs=j.filter(t=>t.R!=null).map(t=>t.R);
  return {app:'gold-replay',v:1,exported:new Date().toISOString(),session:{cursor:ds(S.cur),tf:S.tf,startBalance:S.startBal,balance:S.balance,openPosition:S.pos},
   stats:{trades:j.length,winRate:j.length?+(w/j.length*100).toFixed(1):0,avgR:Rs.length?+(Rs.reduce((a,b)=>a+b,0)/Rs.length).toFixed(2):null,totalPnl:+j.reduce((a,t)=>a+t.pnl,0).toFixed(2),
-   quizzes:qs.length,quizBiasAccuracy:qs.length?+(qs.filter(q=>q.biasCorrect).length/qs.length*100).toFixed(1):null},trades:j,quiz:qs,challenges:S.chal||{}};}
+   quizzes:qs.length,quizBiasAccuracy:qs.length?+(qs.filter(q=>q.biasCorrect).length/qs.length*100).toFixed(1):null},trades:j.map(t=>Object.assign({},t,{reason:tr(t.reason)})),quiz:qs,challenges:S.chal||{},lang:(window.I18N&&I18N.lang)||'ar'};}
 $('bCoach').onclick=()=>dl('gold-coach-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(coachData()),'application/json');
 $('bCoachCopy').onclick=async()=>{const s=JSON.stringify(coachData());try{await navigator.clipboard.writeText(s);status('تم النسخ — الصقه في المحادثة')}catch(e){prompt('انسخ النص:',s)}};
 $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=new File([s],'gold-coach.json',{type:'application/json'});

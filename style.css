@@ -1,3 +1,4 @@
+html{--d:rtl}html[dir=ltr]{--d:ltr}
 :root{--bg:#000;--p1:#0b0b0d;--p2:#131317;--p3:#1c1c22;--bd:#2a2a31;--tx:#e6e6e6;--mu:#8b8b93;--g:#9afc41;--gr:#9c9c9c;--red:#f23645;--r:10px}
 *{box-sizing:border-box}html{background:#000}
 body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
@@ -28,7 +29,7 @@ label{display:inline-flex;gap:6px;align-items:center;color:var(--mu)}
 .seg .tfb.on{background:var(--g);color:#000}
 .chip{border-radius:999px;font-weight:700;color:var(--gr)}
 /* replay controls */
-#ctrl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;direction:ltr}#ctrl>*{direction:rtl}
+#ctrl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;direction:ltr}#ctrl>*{direction:var(--d)}
 #bBack{order:3}#bNext{order:4}#bDay{order:5}
 #ctrl #bPlay{grid-column:span 2}#ctrl button,#ctrl select{width:100%;min-width:0}
 #bPlay.play{min-height:52px;font-size:19px;font-weight:800;background:var(--g);color:#000;border:0;border-radius:999px;box-shadow:0 0 0 1px rgba(154,252,65,.25),0 4px 14px rgba(154,252,65,.18)}
@@ -61,8 +62,8 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
  html,body{height:100%;overflow:hidden}
  #app{display:grid;height:100vh;direction:ltr;grid-template-columns:56px minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr) auto;
   grid-template-areas:"top top top" "draw chart side" "draw ctrl side"}
- #app>*{direction:rtl}#app>#ctrl{direction:ltr}
- #top{display:flex;grid-area:top;align-items:center;justify-content:space-between;background:var(--p1);border-bottom:1px solid var(--bd);direction:rtl}
+ #app>*{direction:var(--d)}#app>#ctrl{direction:ltr}
+ #top{display:flex;grid-area:top;align-items:center;justify-content:space-between;background:var(--p1);border-bottom:1px solid var(--bd);direction:var(--d)}
  header{border:0;background:transparent;padding:6px 14px}
  #tfRow{flex-wrap:nowrap;padding:6px 14px}.seg{flex:none}.seg .tfb{min-height:32px;padding:2px 14px;font-size:14px}
  button,select{min-height:34px;font-size:14px}
@@ -87,3 +88,9 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
 .chal{display:flex;align-items:center;gap:8px;text-align:right;min-height:44px}.chal span{flex:1}.chal small{color:#8b8b93}.chal em{font-style:normal;font-weight:700}
 .expl{margin-top:8px;padding:8px;border-radius:8px;background:#0f1a0f;border:1px solid #2c5a2c;line-height:1.6}
 #selBar #sExec{min-width:70px;padding:0 12px;white-space:nowrap}
+
+#langPick{position:fixed;inset:0;top:0;left:0;right:0;bottom:0;z-index:10000;background:rgba(0,0,0,.92);display:flex;align-items:flex-start;justify-content:center;padding-top:14vh}
+.lp-card{width:min(92vw,380px);background:#0b0b0d;border:1px solid #2a2a31;border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:12px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.lp-logo{font-size:22px;font-weight:800;color:#9afc41}.lp-t{color:#8b8b93;margin-bottom:6px}
+.lp-card button{min-height:56px;font-size:20px;font-weight:800;border-radius:999px}.lp-card button:first-of-type{background:#9afc41;color:#000;border:0}
+.chal{text-align:start}

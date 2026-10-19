@@ -1,3 +1,4 @@
+const tr = (s) => window.I18N ? I18N.tr(s) : s;
 "use strict";
 const $ = (id) => document.getElementById(id);
 const TFS = { M5: 300, M15: 900, H1: 3600, H4: 14400, D1: 86400 };
@@ -309,9 +310,9 @@ function closePos(px, reason, t) {
   if (!p) return;
   const d = p.side === "buy" ? 1 : -1;
   const pnl = +((px - p.entry) * d * OZ * p.lots).toFixed(2), risk = p.sl != null ? Math.abs(p.entry - p.sl) * OZ * p.lots : null;
-  const tr = { id: Date.now(), openT: p.open, closeT: t || S.cur, bal0: p.bal0, open: ds(p.open), close: ds(t || S.cur), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || $("feel").value, ctx: p.ctx };
+  const tr2 = { id: Date.now(), openT: p.open, closeT: t || S.cur, bal0: p.bal0, open: ds(p.open), close: ds(t || S.cur), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || $("feel").value, ctx: p.ctx };
   const j = journal();
-  j.push(tr);
+  j.push(tr2);
   setJournal(j);
   S.balance = +(S.balance + pnl).toFixed(2);
   S.pos = null;
@@ -756,7 +757,8 @@ function drawPos(d, pw) {
   cx.stroke();
   cx.setLineDash([]);
   const rr = Math.abs(d.tp - d.e) / (Math.abs(d.e - d.sl) || 1), lots = d.lots || posLots(d), risk = Math.abs(d.e - d.sl) * OZ * lots, rew = Math.abs(d.tp - d.e) * OZ * lots, up = d.yt < d.ye;
-  const lab = (t, x, y, bg) => {
+  const lab = (t0, x, y, bg) => {
+    const t = tr(t0);
     cx.font = "bold 11px system-ui,sans-serif";
     const tw = cx.measureText(t).width + 10;
     cx.fillStyle = bg;
@@ -1463,7 +1465,7 @@ function snapCtx() {
   if (B && !B.smc) B.smc = computeSMC(B);
   if (!B || !B.smc || !B.smc.raw) return { tf: S.tf };
   const sm = B.smc, { I, Sw } = sm.raw, px = S.price, r2 = (v) => +v.toFixed(2);
-  const tr = (t) => t === 1 ? "up" : t === -1 ? "down" : "none", last = (a) => a.length ? ((l) => ({ type: l.t, dir: l.bull ? "bull" : "bear", level: r2(l.p), time: ds(B.U[l.i2]) }))(a[a.length - 1]) : null;
+  const tr2 = (t) => t === 1 ? "up" : t === -1 ? "down" : "none", last = (a) => a.length ? ((l) => ({ type: l.t, dir: l.bull ? "bull" : "bear", level: r2(l.p), time: ds(B.U[l.i2]) }))(a[a.length - 1]) : null;
   const near = (a) => {
     let b = null;
     for (const o of a) {
@@ -1483,8 +1485,8 @@ function snapCtx() {
     price: px,
     drawings: JSON.parse(JSON.stringify(S.draw)).map((d) => ({ type: d.type, a: d.a && { time: ds(d.a.t), p: r2(d.a.p) }, b: d.b && { time: ds(d.b.t), p: r2(d.b.p) }, off: d.off != null ? r2(d.off) : void 0 })),
     smc: {
-      swingTrend: tr(Sw.trend),
-      internalTrend: tr(I.trend),
+      swingTrend: tr2(Sw.trend),
+      internalTrend: tr2(I.trend),
       lastSwing: last(Sw.lines),
       lastInternal: last(I.lines),
       zone,
@@ -1622,7 +1624,7 @@ $("qGo").onclick = async () => {
     Q.done = 1;
     S.chal = S.chal || {};
     S.chal[Q.ch] = { score, biasOK, outcome: out, R, date: ds(t0), at: (/* @__PURE__ */ new Date()).toISOString() };
-    if (c) $("qRes").innerHTML += '<div class="expl">\u{1F4D8} ' + c.expl + "</div>";
+    if (c) $("qRes").innerHTML += '<div class="expl">\u{1F4D8} ' + (window.I18N && I18N.de() && c.expl_de ? c.expl_de : c.expl) + "</div>";
   }
   Q.bias = null;
   save();
@@ -1642,9 +1644,10 @@ function coachData() {
       quizzes: qs.length,
       quizBiasAccuracy: qs.length ? +(qs.filter((q) => q.biasCorrect).length / qs.length * 100).toFixed(1) : null
     },
-    trades: j,
+    trades: j.map((t) => Object.assign({}, t, { reason: tr(t.reason) })),
     quiz: qs,
-    challenges: S.chal || {}
+    challenges: S.chal || {},
+    lang: window.I18N && I18N.lang || "ar"
   };
 }
 $("bCoach").onclick = () => dl("gold-coach-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json", JSON.stringify(coachData()), "application/json");

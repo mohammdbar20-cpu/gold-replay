@@ -48,7 +48,10 @@ for cat,lst in cands.items():
         if dr!=0: worked=(np.sign(mv)==dr)
         verdict='' if worked is None else (' — النمط نجح.' if worked else ' — النمط فشل وانعكس السعر (فخ).')
         expl=f"{META[cat][1]}{verdict} ما حدث: {'صعد' if up else 'هبط'} السعر {abs(mv):.1f}$ (≈{k:.1f}×ATR) خلال {N} شمعة ساعة. أعلى سعر {hi:.2f} وأدنى سعر {lo:.2f}."
-        out.append({'id':f'{cat}-{h.index[i]:%Y%m%d%H}','cat':cat,'t':int(T[i])+1800,'tf':'H1','title':META[cat][0],'diff':diff,'year':int(h.index[i].year),'expl':expl,'ans':'up' if up else 'down','move':round(float(mv),2)})
+        META_DE={'bos':'Break of Structure (BOS) in Richtung des Haupttrends','choch':'Change of Character (CHoCH) gegen den vorherigen Trend','sweep':'Liquidity Sweep über/unter einem klaren Level, dann Schluss zurück in der Range','spike':'Heftige News-Kerze — Falle oder Beginn einer Bewegung','range':'Enge Seitwärtsrange — Frage ist die Ausbruchsrichtung','chan':'Bruch eines sauberen Preiskanals gegen seine Neigung'}
+        vde='' if worked is None else (' — Muster hat funktioniert.' if worked else ' — Muster ist gescheitert, Preis drehte (Falle).')
+        expl_de=f"{META_DE[cat]}{vde} Was passierte: Der Preis {'stieg' if up else 'fiel'} um {abs(mv):.1f}$ (≈{k:.1f}×ATR) in {N} Stundenkerzen. Hoch {hi:.2f}, Tief {lo:.2f}."
+        out.append({'expl_de':expl_de,'id':f'{cat}-{h.index[i]:%Y%m%d%H}','cat':cat,'t':int(T[i])+1800,'tf':'H1','title':META[cat][0],'diff':diff,'year':int(h.index[i].year),'expl':expl,'ans':'up' if up else 'down','move':round(float(mv),2)})
 out.sort(key=lambda r:r['t'])
 json.dump(out,open('/workspace/gold-replay/data/challenges.json','w'),ensure_ascii=False)
 print(len(out),{c:sum(1 for r in out if r['cat']==c) for c in META},sorted({r['year'] for r in out}))
