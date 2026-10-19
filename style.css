@@ -61,7 +61,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
  html,body{height:100%;overflow:hidden}
  #app{display:grid;height:100vh;direction:ltr;grid-template-columns:56px minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr) auto;
   grid-template-areas:"top top top" "draw chart side" "draw ctrl side"}
- #app>*{direction:rtl}
+ #app>*{direction:rtl}#app>#ctrl{direction:ltr}
  #top{display:flex;grid-area:top;align-items:center;justify-content:space-between;background:var(--p1);border-bottom:1px solid var(--bd);direction:rtl}
  header{border:0;background:transparent;padding:6px 14px}
  #tfRow{flex-wrap:nowrap;padding:6px 14px}.seg{flex:none}.seg .tfb{min-height:32px;padding:2px 14px;font-size:14px}
