@@ -302,7 +302,7 @@ function closePos(px, reason, t) {
   if (!p) return;
   const d = p.side === "buy" ? 1 : -1;
   const pnl = +((px - p.entry) * d * OZ * p.lots).toFixed(2), risk = p.sl != null ? Math.abs(p.entry - p.sl) * OZ * p.lots : null;
-  const tr = { id: Date.now(), open: ds(p.open), close: ds(t || S.cur), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || $("feel").value, ctx: p.ctx };
+  const tr = { id: Date.now(), openT: p.open, closeT: t || S.cur, bal0: p.bal0, open: ds(p.open), close: ds(t || S.cur), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || $("feel").value, ctx: p.ctx };
   const j = journal();
   j.push(tr);
   setJournal(j);
@@ -983,6 +983,51 @@ async function init() {
   requestAnimationFrame(draw);
   ts.scrollToRealTime();
 }
+async function stepBack() {
+  if (Q || busy) return;
+  stopPlay();
+  busy = true;
+  try {
+    const first = Date.parse(MAN.first) / 1e3, T = S.cur - 86400;
+    if (T <= first + 86400) {
+      status("\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
+      return;
+    }
+    const to = await lastM1Before(T);
+    if (to == null || to <= first) {
+      status("\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
+      return;
+    }
+    const cut = ds(to);
+    if (S.pos && S.pos.open > to) S.pos = null;
+    const j = journal(), keep = [], gone = [];
+    for (const t of j) {
+      const ct = t.closeT != null ? t.closeT : null;
+      ((ct != null ? ct > to : t.close > cut) ? gone : keep).push(t);
+    }
+    if (gone.length) {
+      gone.forEach((t) => {
+        S.balance = +(S.balance - t.pnl).toFixed(2);
+      });
+      const last = gone[gone.length - 1];
+      if (!S.pos && last.openT != null && last.openT <= to) S.pos = { side: last.side, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx };
+      setJournal(keep);
+      renderJournal();
+    }
+    S.cur = to;
+    await render();
+    save();
+    updLines();
+    updPos();
+    status("\u23EA \u0631\u062C\u0648\u0639 \u064A\u0648\u0645: " + cut);
+  } catch (e) {
+    console.error(e);
+    status("\u062E\u0637\u0623: " + e.message);
+  } finally {
+    busy = false;
+  }
+}
+$("bBack").onclick = stepBack;
 $("bNext").onclick = stepNext;
 $("bDay").onclick = stepDay;
 $("bPlay").onclick = () => {
@@ -1104,7 +1149,7 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { cpx(i) {
+window.GR = { stepBack, cpx(i) {
   const r = cv.getBoundingClientRect();
   return { x: r.left + XI(i), y: r.top + Y(B.H[i]), h: B.H[i] };
 }, hit: (q) => [hitDraw(q), sel >= 0 && hitHandle(S.draw[sel], q), JSON.stringify(drag)], get sel() {
@@ -1160,6 +1205,7 @@ function snapCtx() {
 let Q = null;
 function quizUI() {
   $("quizP").classList.toggle("hidden", !Q);
+  $("bBack").disabled = !!Q;
   if (!Q) return;
   $("qBias").textContent = Q.bias ? "\u0627\u0644\u0627\u062A\u062C\u0627\u0647: " + (Q.bias === "up" ? "\u0635\u0627\u0639\u062F \u2B06" : "\u0647\u0627\u0628\u0637 \u2B07") : "\u0627\u062E\u062A\u0631 \u0627\u0644\u0627\u062A\u062C\u0627\u0647";
 }

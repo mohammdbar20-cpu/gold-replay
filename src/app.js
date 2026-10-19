@@ -90,7 +90,7 @@ function openPos(side){stopPlay();if(S.pos)return alert('لديك صفقة مف�
  S.pos={side,entry:e,sl,tp,lots,open:S.cur,tf:S.tf,why:$('why').value,feel:$('feel').value,bal0:S.balance,ctx:snapCtx()};save();updLines();updPos();}
 function closePos(px,reason,t){stopPlay();const p=S.pos;if(!p)return;const d=p.side==='buy'?1:-1;
  const pnl=+((px-p.entry)*d*OZ*p.lots).toFixed(2),risk=p.sl!=null?Math.abs(p.entry-p.sl)*OZ*p.lots:null;
- const tr={id:Date.now(),open:ds(p.open),close:ds(t||S.cur),tf:p.tf,side:p.side,lots:p.lots,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,pnl,R:risk?+(pnl/risk).toFixed(2):null,why:p.why,feeling:p.feel||$('feel').value,ctx:p.ctx};
+ const tr={id:Date.now(),openT:p.open,closeT:t||S.cur,bal0:p.bal0,open:ds(p.open),close:ds(t||S.cur),tf:p.tf,side:p.side,lots:p.lots,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,pnl,R:risk?+(pnl/risk).toFixed(2):null,why:p.why,feeling:p.feel||$('feel').value,ctx:p.ctx};
  const j=journal();j.push(tr);setJournal(j);S.balance=+(S.balance+pnl).toFixed(2);S.pos=null;save();
  status((reason==='TP'?'✅ ':reason==='SL'?'❌ ':'')+'أغلقت الصفقة: '+pnl+'$');$('why').value='';$('feel').value='';
  updLines();updPos();renderJournal();}
@@ -255,6 +255,23 @@ async function init(){
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
  renderJournal();requestAnimationFrame(draw);ts.scrollToRealTime();}
+// ---------- step back one day ----------
+async function stepBack(){if(Q||busy)return;stopPlay();busy=true;try{
+ const first=Date.parse(MAN.first)/1000,T=S.cur-86400;
+ if(T<=first+86400){status('بداية البيانات');return}
+ const to=await lastM1Before(T);if(to==null||to<=first){status('بداية البيانات');return}
+ const cut=ds(to);
+ // open position opened after the new cursor -> drop it
+ if(S.pos&&S.pos.open>to)S.pos=null;
+ // trades closed after the new cursor -> remove; reopen the latest one if it was opened before the cursor
+ const j=journal(),keep=[],gone=[];for(const t of j){const ct=t.closeT!=null?t.closeT:null;((ct!=null?ct>to:t.close>cut)?gone:keep).push(t)}
+ if(gone.length){gone.forEach(t=>{S.balance=+(S.balance-t.pnl).toFixed(2)});
+  const last=gone[gone.length-1];
+  if(!S.pos&&last.openT!=null&&last.openT<=to)S.pos={side:last.side,entry:last.entry,sl:last.sl,tp:last.tp,lots:last.lots,open:last.openT,tf:last.tf,why:last.why,feel:last.feeling,bal0:last.bal0!=null?last.bal0:S.balance,ctx:last.ctx};
+  setJournal(keep);renderJournal();}
+ S.cur=to;await render();save();updLines();updPos();status('⏪ رجوع يوم: '+cut);
+}catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
+$('bBack').onclick=stepBack;
 $('bNext').onclick=stepNext;$('bDay').onclick=stepDay;
 $('bPlay').onclick=()=>{if(playT)return stopPlay();$('bPlay').textContent='⏸ إيقاف';$('bPlay').classList.add('playing');playT=setInterval(stepNext,+$('speed').value)};
 $('speed').onchange=()=>{if(playT){stopPlay();$('bPlay').click()}};
@@ -283,7 +300,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
@@ -295,7 +312,7 @@ function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)re
    strongHigh:Sw.trend===-1,strongLow:Sw.trend===1}};}
 // ---------- quiz ----------
 let Q=null;
-function quizUI(){$('quizP').classList.toggle('hidden',!Q);if(!Q)return;$('qBias').textContent=Q.bias?('الاتجاه: '+(Q.bias==='up'?'صاعد ⬆':'هابط ⬇')):'اختر الاتجاه';}
+function quizUI(){$('quizP').classList.toggle('hidden',!Q);$('bBack').disabled=!!Q;if(!Q)return;$('qBias').textContent=Q.bias?('الاتجاه: '+(Q.bias==='up'?'صاعد ⬆':'هابط ⬇')):'اختر الاتجاه';}
 $('bQuiz').onclick=async()=>{stopPlay();if(S.pos)return alert('أغلق الصفقة أولاً');await startAt(randStart());Q={bias:null};$('qE').value=S.price.toFixed(2);$('qSL').value='';$('qTP').value='';$('qRes').textContent='';quizUI();$('quizP').scrollIntoView();};
 $('qUp').onclick=()=>{if(Q){Q.bias='up';quizUI()}};$('qDn').onclick=()=>{if(Q){Q.bias='down';quizUI()}};
 $('qX').onclick=()=>{Q=null;quizUI()};
