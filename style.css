@@ -78,3 +78,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
  #side::-webkit-scrollbar{width:8px}#side::-webkit-scrollbar-thumb{background:#222;border-radius:8px}
  [title]{position:relative}
 }
+#scaleBtns{position:absolute;right:0;bottom:0;width:66px;height:28px;z-index:8;display:flex;align-items:center;justify-content:center;gap:2px;direction:ltr;background:#000;border-top:1px solid #222}
+#scaleBtns button{min-width:0!important;min-height:0!important;width:20px;height:20px;padding:0;font-size:11px;font-weight:700;border-radius:4px;background:transparent;border:1px solid transparent;color:#9c9c9c;line-height:1}
+#scaleBtns button.on{color:#9afc41;background:rgba(154,252,65,.14);border-color:rgba(154,252,65,.5)}
+@media (max-width:899px){#scaleBtns button{width:21px;height:22px;font-size:12px}}

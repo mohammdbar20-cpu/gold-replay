@@ -147,7 +147,7 @@ function updUndo(){const b=$('bUndo');if(b)b.disabled=!(pend||HIST.length)}
 function undo(){if(pend){if(pend.type==='chan'&&pend.stage===2){pend.stage=1;pend.b=pend.a}else pend=null}else if(HIST.length){S.draw=JSON.parse(HIST.pop());drag=null;save();select(sel<S.draw.length?sel:-1)}dirty++;updUndo()}
 function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(draw),500);const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
  const key=B?[w,h,dirty,XI(0),XI(B.n-1),Y(S.price),Y(S.price*1.01),mode,sel,S.draw.length,JSON.stringify(pend),drag?JSON.stringify(S.draw):''].join('|'):'x'+dirty;
- if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;updUndo();
+ if(key===lastKey)return requestAnimationFrame(draw);lastKey=key;updUndo();placeScale();
  if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr}
  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);if(!B)return requestAnimationFrame(draw);
  const pw=w-60;cx.save();cx.beginPath();cx.rect(0,0,pw,h);cx.clip();
@@ -258,7 +258,7 @@ async function init(){
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
  if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;tfBtns();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
@@ -298,6 +298,16 @@ document.querySelectorAll('.tfb').forEach(b=>b.onclick=()=>{if(b.dataset.tf===S.
 $('tf').onchange=async()=>{S.tf=$('tf').value;tfBtns();await render();ts.scrollToRealTime();save()};
 document.querySelectorAll('#draw [data-m]').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('bUndo').onclick=undo;
+// ---------- price-scale toggles (A / L / %) ----------
+const PS=chart.priceScale('right');
+function applyScale(){const sc=S.scale||(S.scale={auto:true,mode:0});PS.applyOptions({autoScale:sc.auto,mode:sc.mode});scaleUI();dirty++}
+function scaleUI(){const sc=S.scale||{auto:true,mode:0};$('scA').classList.toggle('on',!!sc.auto);$('scL').classList.toggle('on',sc.mode===1);$('scP').classList.toggle('on',sc.mode===2)}
+function syncAuto(){if(!S.scale)return;const a=!!PS.options().autoScale;if(a!==S.scale.auto){S.scale.auto=a;scaleUI();save()}}
+['pointerup','touchend','wheel','dblclick'].forEach(ev=>$('chart').addEventListener(ev,()=>setTimeout(syncAuto,50),{passive:true}));
+$('scA').onclick=()=>{S.scale.auto=true;applyScale();save()};
+$('scL').onclick=()=>{S.scale.mode=S.scale.mode===1?0:1;applyScale();save()};
+$('scP').onclick=()=>{S.scale.mode=S.scale.mode===2?0:2;applyScale();save()};
+function placeScale(){const b=$('scaleBtns');const w=PS.width(),h=ts.height();if(w>0){b.style.width=w+'px';b.style.height=Math.max(h,24)+'px'}}
 $('bMag').onclick=()=>{S.magnet=!S.magnet;$('bMag').classList.toggle('on',S.magnet);save()};
 $('sExt').onclick=()=>selEdit(d=>{d.ext=!d.ext});
 document.querySelectorAll('#selBar [data-c]').forEach(b=>b.onclick=()=>{S.lastColor=b.dataset.c;selEdit(d=>{d.color=b.dataset.c})});
@@ -318,7 +328,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);

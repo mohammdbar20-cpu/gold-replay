@@ -6,7 +6,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=12"></head><body>
+<link rel="stylesheet" href="style.css?v=13"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>XAUUSD</b><small>تدريب الذهب</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
@@ -17,6 +17,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
 </div>
 </div>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas>
+<div id="scaleBtns"><button id="scP" title="مقياس نسبة مئوية">%</button><button id="scL" title="مقياس لوغاريتمي">L</button><button id="scA" class="on" title="مقياس تلقائي">A</button></div>
 <div id="selBar" class="hidden"><button id="sExt" title="تمديد لليمين">↦</button><span class="sep"></span><button data-c="#4aa3ff" class="sw" style="background:#4aa3ff" title="أزرق"></button><button data-c="#f23645" class="sw" style="background:#f23645" title="أحمر"></button><button data-c="#9afc41" class="sw" style="background:#9afc41" title="أخضر"></button><button data-c="#ffcc00" class="sw" style="background:#ffcc00" title="أصفر"></button><button data-c="#ffffff" class="sw" style="background:#fff" title="أبيض"></button><span class="sep"></span><button id="sDel" title="حذف (Delete)">🗑</button><button id="sOk" title="إلغاء التحديد (Esc)">✓</button></div></div>
 <div class="row" id="ctrl">
  <button id="bPlay" class="play" title="تشغيل/إيقاف (مسافة)">▶️ تشغيل</button>
@@ -69,4 +70,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="app.js?v=12"></script></body></html>
+<script src="app.js?v=13"></script></body></html>

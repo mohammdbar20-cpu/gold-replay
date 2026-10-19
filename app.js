@@ -514,6 +514,7 @@ function draw() {
   if (key === lastKey) return requestAnimationFrame(draw);
   lastKey = key;
   updUndo();
+  placeScale();
   if (cv.width !== w * dpr || cv.height !== h * dpr) {
     cv.width = w * dpr;
     cv.height = h * dpr;
@@ -1018,6 +1019,8 @@ async function init() {
   S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
   tfBtns();
+  if (!S.scale) S.scale = { auto: true, mode: 0 };
+  applyScale();
   $("bMag").classList.toggle("on", S.magnet);
   $("startBal").value = S.startBal;
   for (const k in S.smc) {
@@ -1144,6 +1147,52 @@ $("tf").onchange = async () => {
 };
 document.querySelectorAll("#draw [data-m]").forEach((b) => b.onclick = () => setMode(b.dataset.m));
 $("bUndo").onclick = undo;
+const PS = chart.priceScale("right");
+function applyScale() {
+  const sc = S.scale || (S.scale = { auto: true, mode: 0 });
+  PS.applyOptions({ autoScale: sc.auto, mode: sc.mode });
+  scaleUI();
+  dirty++;
+}
+function scaleUI() {
+  const sc = S.scale || { auto: true, mode: 0 };
+  $("scA").classList.toggle("on", !!sc.auto);
+  $("scL").classList.toggle("on", sc.mode === 1);
+  $("scP").classList.toggle("on", sc.mode === 2);
+}
+function syncAuto() {
+  if (!S.scale) return;
+  const a = !!PS.options().autoScale;
+  if (a !== S.scale.auto) {
+    S.scale.auto = a;
+    scaleUI();
+    save();
+  }
+}
+["pointerup", "touchend", "wheel", "dblclick"].forEach((ev) => $("chart").addEventListener(ev, () => setTimeout(syncAuto, 50), { passive: true }));
+$("scA").onclick = () => {
+  S.scale.auto = true;
+  applyScale();
+  save();
+};
+$("scL").onclick = () => {
+  S.scale.mode = S.scale.mode === 1 ? 0 : 1;
+  applyScale();
+  save();
+};
+$("scP").onclick = () => {
+  S.scale.mode = S.scale.mode === 2 ? 0 : 2;
+  applyScale();
+  save();
+};
+function placeScale() {
+  const b = $("scaleBtns");
+  const w = PS.width(), h = ts.height();
+  if (w > 0) {
+    b.style.width = w + "px";
+    b.style.height = Math.max(h, 24) + "px";
+  }
+}
 $("bMag").onclick = () => {
   S.magnet = !S.magnet;
   $("bMag").classList.toggle("on", S.magnet);
@@ -1239,7 +1288,7 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { ptpx(o, r) {
+window.GR = { PS: () => PS.options(), ptpx(o, r) {
   return { x: r.left + X(o.t), y: r.top + Y(o.p) };
 }, stepBack, cpx(i) {
   const r = cv.getBoundingClientRect();
