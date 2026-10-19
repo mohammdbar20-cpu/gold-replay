@@ -2,7 +2,7 @@ const tr = (s) => window.I18N ? I18N.tr(s) : s;
 "use strict";
 const $ = (id) => document.getElementById(id);
 const TFS = { M5: 300, M15: 900, H1: 3600, H4: 14400, D1: 86400 };
-const WIN = 500, OZ = 100;
+const WIN = 1500, OZ = 100;
 let MAN, cache = {}, S, B = null, busy = false, playT = null, mode = "none", drag = null, pend = null;
 const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const offM = {};
@@ -101,7 +101,7 @@ async function m1(a, b) {
 }
 async function tfBars(tf, t) {
   if (MAN.tf[tf].months) {
-    const back = tf === "H1" ? 2 : 1;
+    const back = tf === "H1" ? 3 : 1;
     let k = ym(t);
     const ks = [];
     for (let i = 0; i < back; i++) k = prevYm(k);
@@ -622,26 +622,43 @@ function computeSMC(b) {
   return R;
 }
 const cv = $("ov"), cx = cv.getContext("2d"), ts = chart.timeScale();
+function bspan() {
+  const A = B.A, st = B.k - B.nDone;
+  return { A, st, avg: A.n > 1 ? (A.t[A.n - 1] - A.t[0]) / (A.n - 1) : B.tfs };
+}
 function t2l(t) {
-  const U = B.U, n = B.n;
+  const U = B.U, n = B.n, f = B.tfs;
   if (!n) return 0;
-  if (t >= U[n - 1]) return n - 1 + (t - U[n - 1]) / B.tfs;
-  if (t <= U[0]) return (t - U[0]) / B.tfs;
-  const i = bs(U, t, n);
-  return i + (t - U[i]) / (U[i + 1] - U[i]);
+  if (t >= U[n - 1]) return n - 1 + (t - U[n - 1]) / f;
+  const { A, st, avg } = bspan();
+  if (t < A.t[0]) return (t - A.t[0]) / avg - st;
+  const j = bs(A.t, t, A.n);
+  return j - st + Math.min(1, (t - A.t[j]) / f);
 }
 function l2t(l) {
-  const U = B.U, n = B.n;
-  if (l >= n - 1) return U[n - 1] + (l - n + 1) * B.tfs;
-  if (l <= 0) return U[0] + l * B.tfs;
-  const i = Math.floor(l);
-  return U[i] + (l - i) * (U[i + 1] - U[i]);
+  const U = B.U, n = B.n, f = B.tfs;
+  if (!n) return 0;
+  if (l >= n - 1) return U[n - 1] + (l - n + 1) * f;
+  const { A, st, avg } = bspan(), g = l + st;
+  if (g < 0) return A.t[0] + g * avg;
+  const j = Math.floor(g);
+  return A.t[j] + (g - j) * f;
 }
-const X = (t) => ts.logicalToCoordinate(t2l(t)), Y = (p) => ser.priceToCoordinate(p), XI = (i) => ts.logicalToCoordinate(i);
+function LX(l) {
+  const i = Math.floor(l), x0 = ts.logicalToCoordinate(i);
+  if (x0 == null) return null;
+  return l === i ? x0 : x0 + (l - i) * (ts.logicalToCoordinate(i + 1) - x0);
+}
+function LC(x) {
+  const x0 = ts.logicalToCoordinate(0), x1 = ts.logicalToCoordinate(1);
+  if (x0 == null || x1 == null || x1 === x0) return ts.coordinateToLogical(x);
+  return (x - x0) / (x1 - x0);
+}
+const X = (t) => LX(t2l(t)), Y = (p) => ser.priceToCoordinate(p), XI = (i) => ts.logicalToCoordinate(i);
 function pt(e) {
   const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-  const l = ts.coordinateToLogical(x), p = ser.coordinateToPrice(y);
-  return { x, y, t: l == null ? null : l2t(l), p };
+  const l = LC(x), p = ser.coordinateToPrice(y);
+  return { x, y, t: l == null ? null : Math.round(l2t(l)), p };
 }
 const lineP = (a, b, t) => a.p + (b.p - a.p) * ((t - a.t) / (b.t - a.t || 1));
 function segs(d) {
@@ -1161,7 +1178,7 @@ cv.addEventListener("pointerdown", (e) => {
     if (i >= 0 && (mode === "edit" || i === sel)) {
       const d = S.draw[i];
       snap();
-      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: d.a && P2(d.a), b0: d.b && P2(d.b), pts0: d.pts && d.pts.map(P2), pos0: d.type === "pos" ? Object.assign({}, d) : null };
+      drag = { d, k: "body", l0: LC(q.x), p0: q.p, a0: d.a && P2(d.a), b0: d.b && P2(d.b), pts0: d.pts && d.pts.map(P2), pos0: d.type === "pos" ? Object.assign({}, d) : null };
       if (mode !== "edit") select(i);
       return;
     }
@@ -1214,7 +1231,7 @@ cv.addEventListener("pointermove", (e) => {
   if (drag.d) {
     const d = drag.d;
     if (drag.k === "body") {
-      const l = ts.coordinateToLogical(q.x);
+      const l = LC(q.x);
       if (l == null) return;
       const dl2 = l - drag.l0, dp = q.p - drag.p0, mv = (o) => ({ t: d.type === "hline" ? o.t : l2t(t2l(o.t) + dl2), p: o.p + dp });
       if (drag.pos0) {
@@ -1482,6 +1499,7 @@ async function init() {
     status("\u062A\u0645\u062A \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u062C\u0644\u0633\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629");
   } else await startAt(randStart());
   $("startDate").value = new Date(S.cur * 1e3).toISOString().slice(0, 10);
+  if (S.speed && [...$("speed").options].some((o) => o.value == S.speed)) $("speed").value = S.speed;
   renderJournal();
   costUI();
   requestAnimationFrame(draw);
@@ -1599,6 +1617,8 @@ $("bPlay").onclick = () => {
   playT = setInterval(stepNext, +$("speed").value);
 };
 $("speed").onchange = () => {
+  S.speed = $("speed").value;
+  save();
   if (playT) {
     stopPlay();
     $("bPlay").click();
@@ -1867,7 +1887,7 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { coach: () => coachData(), vis: () => {
+window.GR = { chart, ser, LC: (x) => LC(x), render: () => render(), t2l: (t) => t2l(t), l2t: (l) => l2t(l), X: (t) => X(t), Y: (p) => Y(p), coach: () => coachData(), vis: () => {
   const d = ser.data(), l = d[d.length - 1], lr = ts.getVisibleLogicalRange(), vr = ts.getVisibleRange();
   return { n: d.length, lastT: l ? l.time - off(B.U[B.n - 1]) : null, lastC: l ? l.close : null, cur: S.cur, curBar: B.U[B.n - 1], bucket: B.A.t[B.k], nextB: B.A.t[B.k + 1] || null, price: S.price, hdr: $("price").textContent, lr: lr && [lr.from, lr.to], vrTo: vr && vr.to, lastTime: l && l.time };
 }, ema: () => emaSer ? emaSer.map((x) => {

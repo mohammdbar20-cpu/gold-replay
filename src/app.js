@@ -2,7 +2,7 @@ const tr=s=>window.I18N?I18N.tr(s):s;
 'use strict';
 const $=id=>document.getElementById(id);
 const TFS={M5:300,M15:900,H1:3600,H4:14400,D1:86400};
-const WIN=500, OZ=100;
+const WIN=1500, OZ=100;
 let MAN, cache={}, S, B=null, busy=false, playT=null, mode='none', drag=null, pend=null;
 // ---------- time ----------
 const fmt=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Berlin',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -30,7 +30,7 @@ async function m1(a,b){ // M1 bars covering [a,b]
  return cat(await Promise.all(ms.map(m=>load('m1/'+m+'.csv'))));}
 async function tfBars(tf,t){
  if(MAN.tf[tf].months){ // monthly files: only the months around the cursor
-  const back=tf==='H1'?2:1;let k=ym(t);const ks=[];for(let i=0;i<back;i++)k=prevYm(k);
+  const back=tf==="H1"?3:1;let k=ym(t);const ks=[];for(let i=0;i<back;i++)k=prevYm(k);
   for(let i=0;i<back+2;i++){if(MAN.tf[tf].months.includes(k))ks.push(k);k=nextYm(k)}
   const key='w:'+tf+ks.join();if(cache.__wk!==key){cache.__wk=key;cache.__w=Promise.all(ks.map(v=>load(tf+'m/'+v+'.csv'))).then(cat)}return cache.__w;}
  return load(tf+'.csv');}
@@ -177,11 +177,18 @@ function computeSMC(b){const n=b.nDone,H=b.H,L=b.L,C=b.C,R={lines:[],obs:[],fvg:
  return R;}
 // ---------- overlay (drawings + SMC) ----------
 const cv=$('ov'),cx=cv.getContext('2d'),ts=chart.timeScale();
-function t2l(t){const U=B.U,n=B.n;if(!n)return 0;if(t>=U[n-1])return n-1+(t-U[n-1])/B.tfs;if(t<=U[0])return (t-U[0])/B.tfs;
- const i=bs(U,t,n);return i+(t-U[i])/(U[i+1]-U[i]);}
-function l2t(l){const U=B.U,n=B.n;if(l>=n-1)return U[n-1]+(l-n+1)*B.tfs;if(l<=0)return U[0]+l*B.tfs;const i=Math.floor(l);return U[i]+(l-i)*(U[i+1]-U[i]);}
-const X=t=>ts.logicalToCoordinate(t2l(t)),Y=p=>ser.priceToCoordinate(p),XI=i=>ts.logicalToCoordinate(i);
-function pt(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const l=ts.coordinateToLogical(x),p=ser.coordinateToPrice(y);return {x,y,t:l==null?null:l2t(l),p}}
+// time<->logical: exact timestamps, interpolated inside a bar (by bar length), weekend/holiday gaps collapsed,
+// anchors left of the 500-bar window resolved through the full loaded TF array, beyond it extrapolated by mean spacing.
+function bspan(){const A=B.A,st=B.k-B.nDone;return {A,st,avg:A.n>1?(A.t[A.n-1]-A.t[0])/(A.n-1):B.tfs}}
+function t2l(t){const U=B.U,n=B.n,f=B.tfs;if(!n)return 0;if(t>=U[n-1])return n-1+(t-U[n-1])/f;
+ const {A,st,avg}=bspan();if(t<A.t[0])return (t-A.t[0])/avg-st;const j=bs(A.t,t,A.n);return j-st+Math.min(1,(t-A.t[j])/f);}
+function l2t(l){const U=B.U,n=B.n,f=B.tfs;if(!n)return 0;if(l>=n-1)return U[n-1]+(l-n+1)*f;
+ const {A,st,avg}=bspan(),g=l+st;if(g<0)return A.t[0]+g*avg;const j=Math.floor(g);return A.t[j]+(g-j)*f;}
+// lightweight-charts maps only whole logical indices; interpolate fractional ones linearly (works off-screen/out of data too)
+function LX(l){const i=Math.floor(l),x0=ts.logicalToCoordinate(i);if(x0==null)return null;return l===i?x0:x0+(l-i)*(ts.logicalToCoordinate(i+1)-x0)}
+function LC(x){const x0=ts.logicalToCoordinate(0),x1=ts.logicalToCoordinate(1);if(x0==null||x1==null||x1===x0)return ts.coordinateToLogical(x);return (x-x0)/(x1-x0)}
+const X=t=>LX(t2l(t)),Y=p=>ser.priceToCoordinate(p),XI=i=>ts.logicalToCoordinate(i);
+function pt(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const l=LC(x),p=ser.coordinateToPrice(y);return {x,y,t:l==null?null:Math.round(l2t(l)),p}}
 const lineP=(a,b,t)=>a.p+(b.p-a.p)*((t-a.t)/((b.t-a.t)||1));
 function segs(d){if(d.type==='pos')return [];if(d.type==='pen'){const o=[];for(let i=1;i<d.pts.length;i++)o.push([d.pts[i-1],d.pts[i]]);return o}if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}]];const s=[[d.a,d.b]];
  if(d.type==='chan')s.push([{t:d.a.t,p:d.a.p+d.off},{t:d.b.t,p:d.b.p+d.off}]);return s;}
@@ -298,7 +305,7 @@ cv.addEventListener('pointerdown',e=>{if(!B)return;let q=pt(e);if(q.t==null||q.p
   const cand=mode==='edit'?S.draw.map((d,i)=>i).reverse():(sel>=0?[sel]:[]);
   for(const i of cand){const d=S.draw[i],k=hitHandle(d,q);if(k){snap();drag={d,k};if(mode!=='edit')select(i);return}}
   const i=hitDraw(q);
-  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:d.a&&P2(d.a),b0:d.b&&P2(d.b),pts0:d.pts&&d.pts.map(P2),pos0:d.type==='pos'?Object.assign({},d):null};if(mode!=='edit')select(i);return}
+  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:LC(q.x),p0:q.p,a0:d.a&&P2(d.a),b0:d.b&&P2(d.b),pts0:d.pts&&d.pts.map(P2),pos0:d.type==='pos'?Object.assign({},d):null};if(mode!=='edit')select(i);return}
   if(mode==='edit'){for(const p of S.ps)for(const k of ['sl','tp']){if(p[k]!=null&&Math.abs(Y(p[k])-q.y)<16){drag={k,p};return}}for(const p of S.ps){if(Math.abs(Y(p.entry)-q.y)<14){drag={k:'new',p};return}}if(!S.ps.length)for(const k of ['sl','tp']){const v=num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};return}}}
   else if(i>=0)select(i);else select(-1);}});
 cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q.t==null)return;
@@ -306,7 +313,7 @@ cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q
  if(pend&&pend.stage!==2&&mode!=='none'){pend.b=P2(mag(q));dirty++}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t);dirty++}
  if(!drag)return;const p=+q.p.toFixed(2);dirty++;
  if(drag.d){const d=drag.d;
-  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pos0){if(d.st!=='draft')return;const o=drag.pos0;d.t=l2t(t2l(o.t)+dl);d.t2=l2t(t2l(o.t2)+dl);d.e=+(o.e+dp).toFixed(2);d.sl=+(o.sl+dp).toFixed(2);d.tp=+(o.tp+dp).toFixed(2)}else if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
+  if(drag.k==='body'){const l=LC(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pos0){if(d.st!=='draft')return;const o=drag.pos0;d.t=l2t(t2l(o.t)+dl);d.t2=l2t(t2l(o.t2)+dl);d.e=+(o.e+dp).toFixed(2);d.sl=+(o.sl+dp).toFixed(2);d.tp=+(o.tp+dp).toFixed(2)}else if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
   else if(d.type==='pos'){if(drag.k==='w')d.t2=Math.max(q.t,d.t+B.tfs*2);else if(drag.k!=='e'||d.st==='draft'){d[drag.k]=+q.p.toFixed(2);if(d.st==='live'&&drag.k!=='e'){const lp=S.ps.find(x=>x.id===d.posId)||S.ps[0];if(lp){lp[drag.k]=d[drag.k];updLines();updPos()}}}}
   else if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else{const m=mag(q);d[drag.k]={t:d.type==='hline'?d.a.t:m.t,p:m.p};}}
  else if(drag.p){const P=drag.p,dir=P.side==='buy'?1:-1;let k=drag.k;if(k==='new'){if(Math.abs(Y(p)-Y(P.entry))<8)return;k=(p-P.entry)*dir<0?'sl':'tp';drag.k=k}
@@ -357,7 +364,7 @@ async function init(){
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
- renderJournal();costUI();requestAnimationFrame(draw);toLatest();}
+ if(S.speed&&[...$('speed').options].some(o=>o.value==S.speed))$('speed').value=S.speed;renderJournal();costUI();requestAnimationFrame(draw);toLatest();}
 // ---------- step back one day ----------
 async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50))}if(busy)return;busy=true;try{
  const first=Date.parse(MAN.first)/1000;let T;
@@ -388,7 +395,7 @@ document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(t
  else if((k==='Delete'||k==='Backspace')&&sel>=0){e.preventDefault();$('sDel').click()}
  else if(!e.ctrlKey&&!e.metaKey&&!e.altKey){const m={h:'hline',t:'tline',c:'chan',e:'edit',d:'del',p:'pen',l:'long',s:'short'}[k.toLowerCase()];if(m)setMode(m);else if(k.toLowerCase()==='m')$('bMag').click()}});$('bDay').onclick=stepDay;
 $('bPlay').onclick=()=>{if(playT)return stopPlay();stopPlay();$('bPlay').textContent='⏸';$('bPlay').classList.add('playing');playT=setInterval(stepNext,+$('speed').value)};
-$('speed').onchange=()=>{if(playT){stopPlay();$('bPlay').click()}else if(revT){stopPlay();$('bRev').click()}};
+$('speed').onchange=()=>{S.speed=$('speed').value;save();if(playT){stopPlay();$('bPlay').click()}else if(revT){stopPlay();$('bRev').click()}};
 // reverse play: steps back one candle of the current timeframe per tick
 const revTick=()=>stepBack('bar');
 $('bRev').onclick=()=>{if(revT)return stopPlay();if(Q)return;stopPlay();$('bRev').textContent='⏸';$('bRev').classList.add('playing');revT=setInterval(revTick,+$('speed').value)};
@@ -445,7 +452,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={coach:()=>coachData(),vis:()=>{const d=ser.data(),l=d[d.length-1],lr=ts.getVisibleLogicalRange(),vr=ts.getVisibleRange();return {n:d.length,lastT:l?l.time-off(B.U[B.n-1]):null,lastC:l?l.close:null,cur:S.cur,curBar:B.U[B.n-1],bucket:B.A.t[B.k],nextB:B.A.t[B.k+1]||null,price:S.price,hdr:$('price').textContent,lr:lr&&[lr.from,lr.to],vrTo:vr&&vr.to,lastTime:l&&l.time}},ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={chart,ser,LC:x=>LC(x),render:()=>render(),t2l:t=>t2l(t),l2t:l=>l2t(l),X:t=>X(t),Y:p=>Y(p),coach:()=>coachData(),vis:()=>{const d=ser.data(),l=d[d.length-1],lr=ts.getVisibleLogicalRange(),vr=ts.getVisibleRange();return {n:d.length,lastT:l?l.time-off(B.U[B.n-1]):null,lastC:l?l.close:null,cur:S.cur,curBar:B.U[B.n-1],bucket:B.A.t[B.k],nextB:B.A.t[B.k+1]||null,price:S.price,hdr:$('price').textContent,lr:lr&&[lr.from,lr.to],vrTo:vr&&vr.to,lastTime:l&&l.time}},ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);

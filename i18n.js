@@ -239,6 +239,8 @@
     "\u0627\u0644\u0646\u0642\u0627\u0637": "Punkte",
     "\u062A\u062D\u062F\u064A\u0627\u062A": "Challenges",
     "\u0627\u0644\u0633\u0631\u0639\u0629": "Tempo",
+    "0.25x": "0,25x",
+    "0.5x": "0,5x",
     "\u0645\u0634\u0627\u0631\u0643\u0629": "Teilen",
     "\u0627\u0644\u0635\u0641\u0642\u0629": "Trade",
     "\u0627\u0644\u0631\u0635\u064A\u062F": "Guthaben",
@@ -377,6 +379,10 @@
     if (!de) return;
     document.title = tr(document.title);
     walk(document.body);
+    var sp = document.getElementById("speed");
+    if (sp) [].forEach.call(sp.options, function(o) {
+      o.text = o.text.replace(".", ",");
+    });
     new MutationObserver(function(ms) {
       ms.forEach(function(m) {
         if (m.type === "characterData") walk(m.target);
