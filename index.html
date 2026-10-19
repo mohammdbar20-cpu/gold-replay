@@ -6,7 +6,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=13"></head><body>
+<link rel="stylesheet" href="style.css?v=15"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>XAUUSD</b><small>تدريب الذهب</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
@@ -18,14 +18,14 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
 </div>
 <div id="chartWrap" dir="ltr"><div id="chart"></div><canvas id="ov"></canvas>
 <div id="scaleBtns"><button id="scP" title="مقياس نسبة مئوية">%</button><button id="scL" title="مقياس لوغاريتمي">L</button><button id="scA" class="on" title="مقياس تلقائي">A</button></div>
-<div id="selBar" class="hidden"><button id="sExt" title="تمديد لليمين">↦</button><span class="sep"></span><button data-c="#4aa3ff" class="sw" style="background:#4aa3ff" title="أزرق"></button><button data-c="#f23645" class="sw" style="background:#f23645" title="أحمر"></button><button data-c="#9afc41" class="sw" style="background:#9afc41" title="أخضر"></button><button data-c="#ffcc00" class="sw" style="background:#ffcc00" title="أصفر"></button><button data-c="#ffffff" class="sw" style="background:#fff" title="أبيض"></button><span class="sep"></span><button id="sDel" title="حذف (Delete)">🗑</button><button id="sOk" title="إلغاء التحديد (Esc)">✓</button></div></div>
+<div id="selBar" class="hidden"><button id="sExt" title="تمديد لليمين">↦</button><span class="sep"></span><button data-c="#4aa3ff" class="sw" style="background:#4aa3ff" title="أزرق"></button><button data-c="#f23645" class="sw" style="background:#f23645" title="أحمر"></button><button data-c="#9afc41" class="sw" style="background:#9afc41" title="أخضر"></button><button data-c="#ffcc00" class="sw" style="background:#ffcc00" title="أصفر"></button><button data-c="#ffffff" class="sw" style="background:#fff" title="أبيض"></button><span class="sep"></span><button id="sExec" title="تنفيذ الصفقة" style="display:none">✔ نفّذ</button><button id="sDel" title="حذف (Delete)">🗑</button><button id="sOk" title="إلغاء التحديد (Esc)">✓</button></div></div>
 <div class="row" id="ctrl">
  <button id="bPlay" class="play" title="تشغيل/إيقاف (مسافة)">▶️ تشغيل</button>
  <select id="speed" aria-label="السرعة" title="السرعة"><option value="1000" selected>1x</option><option value="500">2x</option><option value="250">4x</option><option value="100">10x</option></select>
  <button id="bBack" title="رجوع يوم (Shift+←)">⏪ يوم</button><button id="bNext" title="الشمعة التالية (→)">▶| شمعة</button><button id="bDay" title="تقدم يوم (Shift+→)">يوم ⏩</button>
 </div>
 <div class="row" id="draw">
- <button data-m="hline" title="خط أفقي (H)"><i>—</i><span>أفقي</span></button><button data-m="tline" title="خط ترند (T)"><i>╱</i><span>ترند</span></button><button data-m="chan" title="قناة سعرية (C)"><i>⫽</i><span>قناة</span></button><button data-m="pen" title="قلم حر (P)"><i>🖊</i><span>قلم</span></button>
+ <button data-m="hline" title="خط أفقي (H)"><i>—</i><span>أفقي</span></button><button data-m="tline" title="خط ترند (T)"><i>╱</i><span>ترند</span></button><button data-m="chan" title="قناة سعرية (C)"><i>⫽</i><span>قناة</span></button><button data-m="long" title="مركز شراء (L)"><i>📈</i><span>شراء</span></button><button data-m="short" title="مركز بيع (S)"><i>📉</i><span>بيع</span></button><button data-m="pen" title="قلم حر (P)"><i>🖊</i><span>قلم</span></button>
  <span class="sep"></span>
  <button id="bMag" class="on" title="مغناطيس OHLC (M)"><i>🧲</i><span>مغناطيس</span></button><button data-m="edit" title="تعديل (E)"><i>✋</i><span>تعديل</span></button><button data-m="del" title="حذف بالنقر (D)"><i>⌫</i><span>حذف</span></button>
  <span class="sep"></span>
@@ -52,10 +52,12 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <textarea id="why" placeholder="لماذا دخلت الصفقة؟"></textarea>
  <input id="feel" placeholder="شعوري (هادئ، متوتر، طماع...)">
  <div class="row"><button id="bBuy" class="buy">▲ شراء BUY</button><button id="bSell" class="sell">▼ بيع SELL</button><button id="bClose">إغلاق الصفقة</button></div>
+ <div class="row small"><label>المخاطرة % <input id="riskPct" type="number" step="0.1" value="1" style="width:70px"></label><span>(لحجم لوت مربع المركز)</span></div>
  <div id="pos">لا توجد صفقة مفتوحة</div>
  <div class="row small">الرصيد: <b id="bal">1000</b>$ &nbsp; رصيد البداية <input id="startBal" type="number" value="1000"></div>
 </div>
-<div class="panel"><div class="row"><button id="bQuiz">🎯 وضع الاختبار</button><button id="bCoach">📤 إرسال للمدرب (تنزيل)</button><button id="bCoachCopy">📋 نسخ للمدرب</button><button id="bCoachShare">🔗 مشاركة</button></div></div>
+<div class="panel"><div class="row"><button id="bChal">🎯 تحديات</button><button id="bQuiz">🎯 وضع الاختبار</button><button id="bCoach">📤 إرسال للمدرب (تنزيل)</button><button id="bCoachCopy">📋 نسخ للمدرب</button><button id="bCoachShare">🔗 مشاركة</button></div></div>
+<div class="panel hidden" id="chalP"><h3>🎯 تحديات مختارة (H1)</h3><div class="small" id="chalSum"></div><div id="chalList"></div></div>
 <div class="panel hidden" id="quizP"><h3>🎯 اختبار: حدد الاتجاه والخطة قبل الكشف</h3>
  <div class="row"><button id="qUp" class="buy">صاعد ⬆</button><button id="qDn" class="sell">هابط ⬇</button><span id="qBias"></span></div>
  <div class="row"><label>دخول <input id="qE" type="number" step="0.01"></label><label>SL <input id="qSL" type="number" step="0.01"></label><label>TP <input id="qTP" type="number" step="0.01"></label>
@@ -70,4 +72,4 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="app.js?v=13"></script></body></html>
+<script src="app.js?v=15"></script></body></html>

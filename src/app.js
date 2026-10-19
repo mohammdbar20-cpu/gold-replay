@@ -88,7 +88,7 @@ function openPos(side){stopPlay();if(S.pos)return alert('لديك صفقة مف�
  const e=S.price,sl=num('sl'),tp=num('tp'),d=side==='buy'?1:-1;
  if(sl!=null&&(sl-e)*d>=0)return alert('وقف الخسارة في الجهة الخطأ');if(tp!=null&&(tp-e)*d<=0)return alert('الهدف في الجهة الخطأ');
  S.pos={side,entry:e,sl,tp,lots,open:S.cur,tf:S.tf,why:$('why').value,feel:$('feel').value,bal0:S.balance,ctx:snapCtx()};save();updLines();updPos();}
-function closePos(px,reason,t){stopPlay();const p=S.pos;if(!p)return;const d=p.side==='buy'?1:-1;
+function closePos(px,reason,t){stopPlay();if(S.draw)S.draw.forEach(d=>{if(d.type==='pos'&&d.st==='live'){d.st='done';d.res=reason;d.t2=Math.max(d.t2,t||S.cur)}});const p=S.pos;if(!p)return;const d=p.side==='buy'?1:-1;
  const pnl=+((px-p.entry)*d*OZ*p.lots).toFixed(2),risk=p.sl!=null?Math.abs(p.entry-p.sl)*OZ*p.lots:null;
  const tr={id:Date.now(),openT:p.open,closeT:t||S.cur,bal0:p.bal0,open:ds(p.open),close:ds(t||S.cur),tf:p.tf,side:p.side,lots:p.lots,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,pnl,R:risk?+(pnl/risk).toFixed(2):null,why:p.why,feeling:p.feel||$('feel').value,ctx:p.ctx};
  const j=journal();j.push(tr);setJournal(j);S.balance=+(S.balance+pnl).toFixed(2);S.pos=null;save();
@@ -137,9 +137,9 @@ function l2t(l){const U=B.U,n=B.n;if(l>=n-1)return U[n-1]+(l-n+1)*B.tfs;if(l<=0)
 const X=t=>ts.logicalToCoordinate(t2l(t)),Y=p=>ser.priceToCoordinate(p),XI=i=>ts.logicalToCoordinate(i);
 function pt(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const l=ts.coordinateToLogical(x),p=ser.coordinateToPrice(y);return {x,y,t:l==null?null:l2t(l),p}}
 const lineP=(a,b,t)=>a.p+(b.p-a.p)*((t-a.t)/((b.t-a.t)||1));
-function segs(d){if(d.type==='pen'){const o=[];for(let i=1;i<d.pts.length;i++)o.push([d.pts[i-1],d.pts[i]]);return o}if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}]];const s=[[d.a,d.b]];
+function segs(d){if(d.type==='pos')return [];if(d.type==='pen'){const o=[];for(let i=1;i<d.pts.length;i++)o.push([d.pts[i-1],d.pts[i]]);return o}if(d.type==='hline')return [[{t:-1e12,p:d.a.p},{t:1e12,p:d.a.p}]];const s=[[d.a,d.b]];
  if(d.type==='chan')s.push([{t:d.a.t,p:d.a.p+d.off},{t:d.b.t,p:d.b.p+d.off}]);return s;}
-function handles(d){if(d.type==='pen')return [];if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
+function handles(d){if(d.type==='pos')return [['e',d.t,d.e],['sl',d.t,d.sl],['tp',d.t,d.tp],['w',d.t2,d.e]];if(d.type==='pen')return [];if(d.type==='hline')return [['a',l2t(B.n-1),d.a.p]];const h=[['a',d.a.t,d.a.p],['b',d.b.t,d.b.p]];
  if(d.type==='chan'){const m=(d.a.t+d.b.t)/2;h.push(['c',m,lineP(d.a,d.b,m)+d.off])}return h;}
 let dirty=1,lastKey='';const HIST=[];
 function snap(){HIST.push(JSON.stringify(S.draw));if(HIST.length>50)HIST.shift()}
@@ -169,7 +169,7 @@ function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(d
    for(const [o,lab,c] of [[s.top,s.trend===-1?'Strong High':'Weak High','#f23645'],[s.bot,s.trend===1?'Strong Low':'Weak Low','#089981']]){
     const x1=XI(o.i),y=Y(o.p);if(x1==null||y==null)continue;cx.strokeStyle=c;cx.beginPath();cx.moveTo(x1,y);cx.lineTo(xr,y);cx.stroke();txt(lab,xr-70,y+(c==='#089981'?12:-3),c);}}
  }
- for(const d of S.draw.concat(pend?[pend]:[])){const col=d===pend&&d.type!=='pen'?'#fc0':(d.color||'#4aa3ff');cx.strokeStyle=col;cx.lineCap=cx.lineJoin='round';cx.lineWidth=d===S.draw[sel]?3:2;
+ for(const d of S.draw.concat(pend?[pend]:[])){if(d.type==='pos'){drawPos(d,pw);continue}const col=d===pend&&d.type!=='pen'?'#fc0':(d.color||'#4aa3ff');cx.strokeStyle=col;cx.lineCap=cx.lineJoin='round';cx.lineWidth=d===S.draw[sel]?3:2;
   for(const g of pix(d,pw)){if(g.some(v=>v==null))continue;cx.beginPath();cx.moveTo(g[0],g[1]);cx.lineTo(g[2],g[3]);cx.stroke();}
   if(d.type==='chan'&&d.b){const P=[X(d.a.t),Y(d.a.p),X(d.b.t),Y(d.b.p),Y(d.b.p+d.off),Y(d.a.p+d.off)];if(!P.some(v=>v==null)){cx.globalAlpha=.1;cx.fillStyle=col;cx.beginPath();cx.moveTo(P[0],P[1]);cx.lineTo(P[2],P[3]);cx.lineTo(P[2],P[4]);cx.lineTo(P[0],P[5]);cx.fill();cx.globalAlpha=1;}}
   if(d!==pend&&(mode==='edit'||d===S.draw[sel]))for(const [,t,p] of handles(d)){const hx=d.type==='hline'?pw-20:X(t),hy=Y(p);if(hx==null||hy==null)continue;cx.fillStyle='#000';cx.strokeStyle=col;cx.lineWidth=2;cx.beginPath();cx.arc(hx,hy,8,0,7);cx.fill();cx.stroke();}}
@@ -179,20 +179,44 @@ function dSeg(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,L=dx*dx+dy*dy||1;let u=
 function pix(d,pw){if(d.type==='hline'){const y=Y(d.a.p);return [[0,y,pw,y]]}
  const out=[];for(const [a,b] of segs(d)){let x1=X(a.t),y1=Y(a.p),x2=X(b.t),y2=Y(b.p);
   if(d.ext&&x1!=null&&x2!=null&&y1!=null&&y2!=null&&Math.abs(x2-x1)>0.5){const k=(pw+50-x2)/(x2-x1);if(k>0){x2+=k*(x2-x1);y2+=k*(y2-y1)}}out.push([x1,y1,x2,y2])}return out;}
-function hitDraw(q){const pw=cv.clientWidth-60;for(let i=S.draw.length-1;i>=0;i--){for(const g of pix(S.draw[i],pw)){if(g.some(v=>v==null))continue;if(dSeg(q.x,q.y,g[0],g[1],g[2],g[3])<18)return i}}return -1}
+function hitDraw(q){const pw=cv.clientWidth-60;for(let i=S.draw.length-1;i>=0;i--){if(S.draw[i].type==='pos'){if(posHit(S.draw[i],q))return i;continue}for(const g of pix(S.draw[i],pw)){if(g.some(v=>v==null))continue;if(dSeg(q.x,q.y,g[0],g[1],g[2],g[3])<18)return i}}return -1}
 function hitHandle(d,q){const pw=cv.clientWidth-60;for(const [k,t,p] of handles(d)){const hx=d.type==='hline'?pw-20:X(t),hy=Y(p);if(hx!=null&&hy!=null&&Math.hypot(hx-q.x,hy-q.y)<24)return k}return null}
 // magnet: snap to nearest OHLC of the candle under the finger (within 30px)
 function mag(q){if(!S.magnet||!B||q.t==null)return q;const l=ts.coordinateToLogical(q.x);if(l==null)return q;const i=Math.round(l);if(i<0||i>=B.n)return q;
  let best=null,bd=30;for(const v of [B.O[i],B.H[i],B.L[i],B.C[i]]){const y=Y(v);if(y==null)continue;const dd=Math.abs(y-q.y);if(dd<bd){bd=dd;best=v}}
  return best==null?q:{x:XI(i),y:Y(best),t:B.U[i],p:best};}
 const P2=q=>({t:q.t,p:q.p});
+// ---------- long/short position tool ----------
+function atrNow(){const n=B.nDone||B.n,i0=Math.max(0,n-14);let s=0;for(let i=i0;i<n;i++)s+=B.H[i]-B.L[i];return s/Math.max(1,n-i0)}
+function newPos(side,q){const a=atrNow(),e=+q.p.toFixed(2),d=side==='buy'?1:-1;
+ return {type:'pos',side,t:q.t,t2:q.t+B.tfs*25,e,sl:+(e-d*1.5*a).toFixed(2),tp:+(e+d*3*a).toFixed(2),st:'draft'};}
+function posLots(d){const r=Math.abs(d.e-d.sl)*OZ;if(!r)return 0.01;return Math.max(0.01,Math.floor(S.balance*(S.riskPct||1)/100/r*100)/100)}
+function posRes(d){if(d.st==='done')return d.res;const U=B.U,n=B.nDone;const dir=d.side==='buy'?1:-1;let i=bs(U,d.t,B.n);if(i<0)i=0;
+ for(i=i+1;i<n&&U[i]<=d.t2;i++){if(dir>0?B.L[i]<=d.sl:B.H[i]>=d.sl)return 'SL';if(dir>0?B.H[i]>=d.tp:B.L[i]<=d.tp)return 'TP'}return null}
+function posBox(d,pw){const x1=X(d.t),x2=X(d.t2);return {x1,x2,ye:Y(d.e),ys:Y(d.sl),yt:Y(d.tp)}}
+function posHit(d,q){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v==null))return false;const y0=Math.min(b.ys,b.yt),y1=Math.max(b.ys,b.yt);return q.x>=Math.min(b.x1,b.x2)-6&&q.x<=Math.max(b.x1,b.x2)+6&&q.y>=y0-6&&q.y<=y1+6}
+function drawPos(d,pw){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v==null))return;const res=posRes(d),w=b.x2-b.x1;
+ cx.fillStyle=res==='TP'?'rgba(8,153,129,.5)':'rgba(8,153,129,.22)';cx.fillRect(b.x1,Math.min(b.ye,b.yt),w,Math.abs(b.yt-b.ye));
+ cx.fillStyle=res==='SL'?'rgba(242,54,69,.5)':'rgba(242,54,69,.22)';cx.fillRect(b.x1,Math.min(b.ye,b.ys),w,Math.abs(b.ys-b.ye));
+ cx.strokeStyle='#ddd';cx.lineWidth=1;cx.setLineDash(d.st==='draft'?[4,3]:[]);cx.beginPath();cx.moveTo(b.x1,b.ye);cx.lineTo(b.x2,b.ye);cx.stroke();cx.setLineDash([]);
+ const rr=Math.abs(d.tp-d.e)/(Math.abs(d.e-d.sl)||1),lots=d.lots||posLots(d),risk=Math.abs(d.e-d.sl)*OZ*lots,rew=Math.abs(d.tp-d.e)*OZ*lots,up=d.yt<d.ye;
+ const lab=(t,x,y,bg)=>{cx.font='bold 11px system-ui,sans-serif';const tw=cx.measureText(t).width+10;cx.fillStyle=bg;cx.fillRect(x,y-8,tw,16);cx.fillStyle='#fff';cx.fillText(t,x+5,y+4)};
+ const xl=Math.min(b.x1,b.x2)+2;
+ lab('الهدف '+d.tp.toFixed(2)+'  +'+Math.abs(d.tp-d.e).toFixed(2)+'  ($'+rew.toFixed(0)+')  RR 1:'+rr.toFixed(2),xl,b.yt+(b.yt<b.ye?-10:10),'#087a66');
+ lab('الوقف '+d.sl.toFixed(2)+'  -'+Math.abs(d.e-d.sl).toFixed(2)+'  | '+lots.toFixed(2)+' لوت | مخاطرة $'+risk.toFixed(0),xl,b.ys+(b.ys>b.ye?10:-10),'#a3202e');
+ lab((d.side==='buy'?'شراء ':'بيع ')+d.e.toFixed(2)+(d.st==='live'?' • منفذة':d.st==='done'?(' • '+(d.res||'')):'')+(res==='TP'?' ✅':res==='SL'?' ❌':''),xl,b.ye,d.side==='buy'?'#1d5e1d':'#7a1d1d');}
+function execPos(){if(sel<0)return;const d=S.draw[sel];if(!d||d.type!=='pos'||d.st!=='draft')return;
+ if(Q){Q.bias=d.side==='buy'?'up':'down';$('qE').value=d.e.toFixed(2);$('qSL').value=d.sl.toFixed(2);$('qTP').value=d.tp.toFixed(2);snap();d.st='quiz';save();quizUI();select(sel);status('تم ضبط الاختبار من المربع — اضغط اكشف');return}
+ if(S.pos)return alert('لديك صفقة مفتوحة');
+ $('sl').value=d.sl;$('tp').value=d.tp;$('lots').value=posLots(d).toFixed(2);openPos(d.side);
+ if(S.pos){snap();d.st='live';d.lots=S.pos.lots;const sh=S.pos.entry-d.e;d.e=S.pos.entry;d.t=S.cur;d.t2=Math.max(d.t2,S.cur+B.tfs*5);save();select(sel);status('✔ تم تنفيذ الصفقة')}}
 // Ramer-Douglas-Peucker in screen pixels (eps 1.5px), capped at 300 points
 function simplify(pts){const P=pts.map(o=>[X(o.t),Y(o.p)]);let eps=1.5,keep;
  const rdp=(a,b)=>{let md=0,mi=-1;for(let i=a+1;i<b;i++){const d=dSeg(P[i][0],P[i][1],P[a][0],P[a][1],P[b][0],P[b][1]);if(d>md){md=d;mi=i}}if(md>eps){rdp(a,mi);keep[mi]=1;rdp(mi,b)}};
  do{keep=new Uint8Array(P.length);keep[0]=keep[P.length-1]=1;rdp(0,P.length-1);eps*=1.6}while(keep.reduce((a,v)=>a+v,0)>300);
  return pts.filter((o,i)=>keep[i]).map(o=>({t:o.t,p:+o.p.toFixed(3)}));}
 let sel=-1;
-function select(i){sel=i;dirty++;const tb=$('selBar');if(tb){tb.classList.toggle('hidden',sel<0);if(sel>=0){const d=S.draw[sel];$('sExt').classList.toggle('on',!!d.ext);$('sExt').style.display=(d.type==='hline'||d.type==='pen')?'none':''}}
+function select(i){sel=i;dirty++;const tb=$('selBar');if(tb){tb.classList.toggle('hidden',sel<0);if(sel>=0){const d=S.draw[sel];$('sExt').classList.toggle('on',!!d.ext);$('sExt').style.display=(d.type==='hline'||d.type==='pen'||d.type==='pos')?'none':'';$('sExec').style.display=d.type==='pos'&&d.st==='draft'?'':'none'}}
  cv.classList.toggle('active',mode!=='none'||sel>=0);}
 function finish(d){snap();S.draw.push(d);pend=null;save();const m=mode;mode='none';document.querySelectorAll('#draw [data-m]').forEach(b=>b.classList.remove('on'));select(S.draw.length-1);}
 function selEdit(fn){if(sel<0)return;snap();fn(S.draw[sel]);save();select(sel);}
@@ -205,13 +229,14 @@ cv.addEventListener('pointerdown',e=>{if(!B)return;let q=pt(e);if(q.t==null||q.p
  else if(mode==='tline'){if(!pend)pend={type:'tline',a:P2(qm),b:P2(qm)};else{pend.b=P2(qm);finish(pend)}}
  else if(mode==='chan'){if(!pend)pend={type:'chan',a:P2(qm),b:P2(qm),off:0,stage:1};else if(pend.stage===1){pend.b=P2(qm);pend.stage=2}
   else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;finish(pend)}}
+ else if(mode==='long'||mode==='short'){finish(newPos(mode==='long'?'buy':'sell',q));}
  else if(mode==='pen'){pend={type:'pen',pts:[P2(q)],color:S.lastColor||'#ffcc00'};}
  else if(mode==='del'){const i=hitDraw(q);if(i>=0){snap();S.draw.splice(i,1);save()}}
  else{ // edit mode or a selected drawing
   const cand=mode==='edit'?S.draw.map((d,i)=>i).reverse():(sel>=0?[sel]:[]);
   for(const i of cand){const d=S.draw[i],k=hitHandle(d,q);if(k){snap();drag={d,k};if(mode!=='edit')select(i);return}}
   const i=hitDraw(q);
-  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:d.a&&P2(d.a),b0:d.b&&P2(d.b),pts0:d.pts&&d.pts.map(P2)};if(mode!=='edit')select(i);return}
+  if(i>=0&&(mode==='edit'||i===sel)){const d=S.draw[i];snap();drag={d,k:'body',l0:ts.coordinateToLogical(q.x),p0:q.p,a0:d.a&&P2(d.a),b0:d.b&&P2(d.b),pts0:d.pts&&d.pts.map(P2),pos0:d.type==='pos'?Object.assign({},d):null};if(mode!=='edit')select(i);return}
   if(mode==='edit'){for(const k of ['sl','tp']){const v=S.pos?S.pos[k]:num(k);if(v!=null&&Math.abs(Y(v)-q.y)<16){drag={k};return}}}
   else if(i>=0)select(i);else select(-1);}});
 cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q.t==null)return;
@@ -219,7 +244,8 @@ cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q
  if(pend&&pend.stage!==2&&mode!=='none'){pend.b=P2(mag(q));dirty++}else if(pend&&pend.stage===2){pend.off=q.p-lineP(pend.a,pend.b,q.t);dirty++}
  if(!drag)return;const p=+q.p.toFixed(2);dirty++;
  if(drag.d){const d=drag.d;
-  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
+  if(drag.k==='body'){const l=ts.coordinateToLogical(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pos0){if(d.st!=='draft')return;const o=drag.pos0;d.t=l2t(t2l(o.t)+dl);d.t2=l2t(t2l(o.t2)+dl);d.e=+(o.e+dp).toFixed(2);d.sl=+(o.sl+dp).toFixed(2);d.tp=+(o.tp+dp).toFixed(2)}else if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
+  else if(d.type==='pos'){if(drag.k==='w')d.t2=Math.max(q.t,d.t+B.tfs*2);else if(drag.k!=='e'||d.st==='draft'){d[drag.k]=+q.p.toFixed(2);if(d.st==='live'&&S.pos&&drag.k!=='e'){S.pos[drag.k]=d[drag.k];updLines();updPos()}}}
   else if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else{const m=mag(q);d[drag.k]={t:d.type==='hline'?d.a.t:m.t,p:m.p};}}
  else{if(S.pos)S.pos[drag.k]=p;else $(drag.k).value=p;updLines();updPos();}});
 cv.addEventListener('pointerup',e=>{const q=pt(e);
@@ -258,7 +284,7 @@ async function init(){
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
  if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;tfBtns();if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();$('riskPct').value=S.riskPct||1;if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
@@ -290,7 +316,7 @@ document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(t
  else if((e.ctrlKey||e.metaKey)&&(k==='z'||k==='Z')){e.preventDefault();undo()}
  else if(k==='Escape'){if(mode!=='none')setMode(mode);else select(-1)}
  else if((k==='Delete'||k==='Backspace')&&sel>=0){e.preventDefault();$('sDel').click()}
- else if(!e.ctrlKey&&!e.metaKey&&!e.altKey){const m={h:'hline',t:'tline',c:'chan',e:'edit',d:'del',p:'pen'}[k.toLowerCase()];if(m)setMode(m);else if(k.toLowerCase()==='m')$('bMag').click()}});$('bDay').onclick=stepDay;
+ else if(!e.ctrlKey&&!e.metaKey&&!e.altKey){const m={h:'hline',t:'tline',c:'chan',e:'edit',d:'del',p:'pen',l:'long',s:'short'}[k.toLowerCase()];if(m)setMode(m);else if(k.toLowerCase()==='m')$('bMag').click()}});$('bDay').onclick=stepDay;
 $('bPlay').onclick=()=>{if(playT)return stopPlay();$('bPlay').textContent='⏸ إيقاف';$('bPlay').classList.add('playing');playT=setInterval(stepNext,+$('speed').value)};
 $('speed').onchange=()=>{if(playT){stopPlay();$('bPlay').click()}};
 const tfBtns=()=>document.querySelectorAll('.tfb').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
@@ -312,6 +338,8 @@ $('bMag').onclick=()=>{S.magnet=!S.magnet;$('bMag').classList.toggle('on',S.magn
 $('sExt').onclick=()=>selEdit(d=>{d.ext=!d.ext});
 document.querySelectorAll('#selBar [data-c]').forEach(b=>b.onclick=()=>{S.lastColor=b.dataset.c;selEdit(d=>{d.color=b.dataset.c})});
 $('sDel').onclick=()=>{if(sel<0)return;snap();S.draw.splice(sel,1);save();select(-1)};
+$('sExec').onclick=execPos;
+$('riskPct').onchange=()=>{const v=num('riskPct');if(v>0&&v<=100){S.riskPct=v;save();dirty++}};
 $('sOk').onclick=()=>select(-1);
 $('bClr').onclick=()=>{if(confirm('مسح كل الرسومات؟')){if(S.draw.length)snap();S.draw=[];save();select(-1)}};
 $('bSmc').onclick=()=>$('smcPanel').classList.toggle('hidden');
@@ -328,7 +356,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);
@@ -344,6 +372,15 @@ function quizUI(){$('quizP').classList.toggle('hidden',!Q);$('bBack').disabled=!
 $('bQuiz').onclick=async()=>{stopPlay();if(S.pos)return alert('أغلق الصفقة أولاً');await startAt(randStart());Q={bias:null};$('qE').value=S.price.toFixed(2);$('qSL').value='';$('qTP').value='';$('qRes').textContent='';quizUI();$('quizP').scrollIntoView();};
 $('qUp').onclick=()=>{if(Q){Q.bias='up';quizUI()}};$('qDn').onclick=()=>{if(Q){Q.bias='down';quizUI()}};
 $('qX').onclick=()=>{Q=null;quizUI()};
+let CH=null;
+async function chalList(){if(!CH)CH=await (await fetch('data/challenges.json')).json();const sc=S.chal||{};
+ $('chalList').innerHTML=CH.map((c,i)=>{const r=sc[c.id];return `<button class="chal" data-i="${i}"><b>#${i+1}</b> <span>${c.title}</span><small>${c.year} • ${c.diff}</small>${r?`<em class="${r.biasOK?'w':'l'}">${r.biasOK?'✅':'❌'} ${r.score}</em>`:''}</button>`}).join('');
+ const done=Object.keys(sc).length,ok=Object.values(sc).filter(r=>r.biasOK).length;$('chalSum').textContent=`أنجزت ${done}/${CH.length} — صحيح ${ok}`;
+ document.querySelectorAll('#chalList .chal').forEach(b=>b.onclick=()=>startChal(CH[+b.dataset.i]));}
+async function startChal(c){stopPlay();if(S.pos)return alert('أغلق الصفقة أولاً');S.tf=c.tf;$('tf').value=c.tf;tfBtns();await startAt(c.t);
+ Q={bias:null,ch:c.id};$('qE').value=S.price.toFixed(2);$('qSL').value='';$('qTP').value='';$('qRes').innerHTML='<b>🎯 '+c.title+'</b> — '+c.diff+'<br>ارسم مربع شراء/بيع (📈/📉) ثم ✔ نفّذ، أو اختر الاتجاه، ثم 👁 اكشف.';
+ $('chalP').classList.add('hidden');quizUI();scrollTo(0,0);}
+$('bChal').onclick=async()=>{$('chalP').classList.toggle('hidden');if(!$('chalP').classList.contains('hidden')){await chalList();$('chalP').scrollIntoView()}};
 $('qGo').onclick=async()=>{if(!Q||busy)return;if(!Q.bias)return alert('اختر الاتجاه أولاً');
  const e=num('qE')??S.price,sl=num('qSL'),tp=num('qTP'),N=+$('qN').value,d=Q.bias==='up'?1:-1;
  if(sl!=null&&(sl-e)*d>=0)return alert('SL في الجهة الخطأ');if(tp!=null&&(tp-e)*d<=0)return alert('TP في الجهة الخطأ');
@@ -361,12 +398,14 @@ $('qGo').onclick=async()=>{if(!Q||busy)return;if(!Q.bias)return alert('اختر 
  const qs=LS('gr_quiz')||[];qs.push(rec);localStorage.setItem('gr_quiz',JSON.stringify(qs));
  const ok=qs.filter(q=>q.biasCorrect).length;
  $('qRes').innerHTML=`${biasOK?'✅ الاتجاه صحيح':'❌ الاتجاه خطأ'} | الحركة ${rec.move}$ | الصفقة: ${({TP:'وصلت الهدف',SL:'ضرب الوقف',open:'ما زالت مفتوحة',not_triggered:'لم تتفعل'})[out]} ${R!=null?'('+R+'R)':''} | النقاط ${score}<br>إجمالي الاختبارات ${qs.length} — دقة الاتجاه ${(ok/qs.length*100).toFixed(0)}%`;
+ if(Q.ch&&!Q.done){const c=(CH||[]).find(x=>x.id===Q.ch);Q.done=1;S.chal=S.chal||{};S.chal[Q.ch]={score,biasOK,outcome:out,R,date:ds(t0),at:new Date().toISOString()};
+  if(c)$('qRes').innerHTML+='<div class="expl">📘 '+c.expl+'</div>';}
  Q.bias=null;save();};
 // ---------- coach export ----------
 function coachData(){const j=journal(),qs=LS('gr_quiz')||[],w=j.filter(t=>t.pnl>0).length,Rs=j.filter(t=>t.R!=null).map(t=>t.R);
  return {app:'gold-replay',v:1,exported:new Date().toISOString(),session:{cursor:ds(S.cur),tf:S.tf,startBalance:S.startBal,balance:S.balance,openPosition:S.pos},
   stats:{trades:j.length,winRate:j.length?+(w/j.length*100).toFixed(1):0,avgR:Rs.length?+(Rs.reduce((a,b)=>a+b,0)/Rs.length).toFixed(2):null,totalPnl:+j.reduce((a,t)=>a+t.pnl,0).toFixed(2),
-   quizzes:qs.length,quizBiasAccuracy:qs.length?+(qs.filter(q=>q.biasCorrect).length/qs.length*100).toFixed(1):null},trades:j,quiz:qs};}
+   quizzes:qs.length,quizBiasAccuracy:qs.length?+(qs.filter(q=>q.biasCorrect).length/qs.length*100).toFixed(1):null},trades:j,quiz:qs,challenges:S.chal||{}};}
 $('bCoach').onclick=()=>dl('gold-coach-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(coachData()),'application/json');
 $('bCoachCopy').onclick=async()=>{const s=JSON.stringify(coachData());try{await navigator.clipboard.writeText(s);status('تم النسخ — الصقه في المحادثة')}catch(e){prompt('انسخ النص:',s)}};
 $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=new File([s],'gold-coach.json',{type:'application/json'});

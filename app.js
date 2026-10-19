@@ -298,6 +298,13 @@ function openPos(side) {
 }
 function closePos(px, reason, t) {
   stopPlay();
+  if (S.draw) S.draw.forEach((d2) => {
+    if (d2.type === "pos" && d2.st === "live") {
+      d2.st = "done";
+      d2.res = reason;
+      d2.t2 = Math.max(d2.t2, t || S.cur);
+    }
+  });
   const p = S.pos;
   if (!p) return;
   const d = p.side === "buy" ? 1 : -1;
@@ -462,6 +469,7 @@ function pt(e) {
 }
 const lineP = (a, b, t) => a.p + (b.p - a.p) * ((t - a.t) / (b.t - a.t || 1));
 function segs(d) {
+  if (d.type === "pos") return [];
   if (d.type === "pen") {
     const o = [];
     for (let i = 1; i < d.pts.length; i++) o.push([d.pts[i - 1], d.pts[i]]);
@@ -473,6 +481,7 @@ function segs(d) {
   return s;
 }
 function handles(d) {
+  if (d.type === "pos") return [["e", d.t, d.e], ["sl", d.t, d.sl], ["tp", d.t, d.tp], ["w", d.t2, d.e]];
   if (d.type === "pen") return [];
   if (d.type === "hline") return [["a", l2t(B.n - 1), d.a.p]];
   const h = [["a", d.a.t, d.a.p], ["b", d.b.t, d.b.p]];
@@ -583,6 +592,10 @@ function draw() {
     }
   }
   for (const d of S.draw.concat(pend ? [pend] : [])) {
+    if (d.type === "pos") {
+      drawPos(d, pw);
+      continue;
+    }
     const col = d === pend && d.type !== "pen" ? "#fc0" : d.color || "#4aa3ff";
     cx.strokeStyle = col;
     cx.lineCap = cx.lineJoin = "round";
@@ -651,6 +664,10 @@ function pix(d, pw) {
 function hitDraw(q) {
   const pw = cv.clientWidth - 60;
   for (let i = S.draw.length - 1; i >= 0; i--) {
+    if (S.draw[i].type === "pos") {
+      if (posHit(S.draw[i], q)) return i;
+      continue;
+    }
     for (const g of pix(S.draw[i], pw)) {
       if (g.some((v) => v == null)) continue;
       if (dSeg(q.x, q.y, g[0], g[1], g[2], g[3]) < 18) return i;
@@ -685,6 +702,108 @@ function mag(q) {
   return best == null ? q : { x: XI(i), y: Y(best), t: B.U[i], p: best };
 }
 const P2 = (q) => ({ t: q.t, p: q.p });
+function atrNow() {
+  const n = B.nDone || B.n, i0 = Math.max(0, n - 14);
+  let s = 0;
+  for (let i = i0; i < n; i++) s += B.H[i] - B.L[i];
+  return s / Math.max(1, n - i0);
+}
+function newPos(side, q) {
+  const a = atrNow(), e = +q.p.toFixed(2), d = side === "buy" ? 1 : -1;
+  return { type: "pos", side, t: q.t, t2: q.t + B.tfs * 25, e, sl: +(e - d * 1.5 * a).toFixed(2), tp: +(e + d * 3 * a).toFixed(2), st: "draft" };
+}
+function posLots(d) {
+  const r = Math.abs(d.e - d.sl) * OZ;
+  if (!r) return 0.01;
+  return Math.max(0.01, Math.floor(S.balance * (S.riskPct || 1) / 100 / r * 100) / 100);
+}
+function posRes(d) {
+  if (d.st === "done") return d.res;
+  const U = B.U, n = B.nDone;
+  const dir = d.side === "buy" ? 1 : -1;
+  let i = bs(U, d.t, B.n);
+  if (i < 0) i = 0;
+  for (i = i + 1; i < n && U[i] <= d.t2; i++) {
+    if (dir > 0 ? B.L[i] <= d.sl : B.H[i] >= d.sl) return "SL";
+    if (dir > 0 ? B.H[i] >= d.tp : B.L[i] <= d.tp) return "TP";
+  }
+  return null;
+}
+function posBox(d, pw) {
+  const x1 = X(d.t), x2 = X(d.t2);
+  return { x1, x2, ye: Y(d.e), ys: Y(d.sl), yt: Y(d.tp) };
+}
+function posHit(d, q) {
+  const b = posBox(d);
+  if ([b.x1, b.x2, b.ye, b.ys, b.yt].some((v) => v == null)) return false;
+  const y0 = Math.min(b.ys, b.yt), y1 = Math.max(b.ys, b.yt);
+  return q.x >= Math.min(b.x1, b.x2) - 6 && q.x <= Math.max(b.x1, b.x2) + 6 && q.y >= y0 - 6 && q.y <= y1 + 6;
+}
+function drawPos(d, pw) {
+  const b = posBox(d);
+  if ([b.x1, b.x2, b.ye, b.ys, b.yt].some((v) => v == null)) return;
+  const res = posRes(d), w = b.x2 - b.x1;
+  cx.fillStyle = res === "TP" ? "rgba(8,153,129,.5)" : "rgba(8,153,129,.22)";
+  cx.fillRect(b.x1, Math.min(b.ye, b.yt), w, Math.abs(b.yt - b.ye));
+  cx.fillStyle = res === "SL" ? "rgba(242,54,69,.5)" : "rgba(242,54,69,.22)";
+  cx.fillRect(b.x1, Math.min(b.ye, b.ys), w, Math.abs(b.ys - b.ye));
+  cx.strokeStyle = "#ddd";
+  cx.lineWidth = 1;
+  cx.setLineDash(d.st === "draft" ? [4, 3] : []);
+  cx.beginPath();
+  cx.moveTo(b.x1, b.ye);
+  cx.lineTo(b.x2, b.ye);
+  cx.stroke();
+  cx.setLineDash([]);
+  const rr = Math.abs(d.tp - d.e) / (Math.abs(d.e - d.sl) || 1), lots = d.lots || posLots(d), risk = Math.abs(d.e - d.sl) * OZ * lots, rew = Math.abs(d.tp - d.e) * OZ * lots, up = d.yt < d.ye;
+  const lab = (t, x, y, bg) => {
+    cx.font = "bold 11px system-ui,sans-serif";
+    const tw = cx.measureText(t).width + 10;
+    cx.fillStyle = bg;
+    cx.fillRect(x, y - 8, tw, 16);
+    cx.fillStyle = "#fff";
+    cx.fillText(t, x + 5, y + 4);
+  };
+  const xl = Math.min(b.x1, b.x2) + 2;
+  lab("\u0627\u0644\u0647\u062F\u0641 " + d.tp.toFixed(2) + "  +" + Math.abs(d.tp - d.e).toFixed(2) + "  ($" + rew.toFixed(0) + ")  RR 1:" + rr.toFixed(2), xl, b.yt + (b.yt < b.ye ? -10 : 10), "#087a66");
+  lab("\u0627\u0644\u0648\u0642\u0641 " + d.sl.toFixed(2) + "  -" + Math.abs(d.e - d.sl).toFixed(2) + "  | " + lots.toFixed(2) + " \u0644\u0648\u062A | \u0645\u062E\u0627\u0637\u0631\u0629 $" + risk.toFixed(0), xl, b.ys + (b.ys > b.ye ? 10 : -10), "#a3202e");
+  lab((d.side === "buy" ? "\u0634\u0631\u0627\u0621 " : "\u0628\u064A\u0639 ") + d.e.toFixed(2) + (d.st === "live" ? " \u2022 \u0645\u0646\u0641\u0630\u0629" : d.st === "done" ? " \u2022 " + (d.res || "") : "") + (res === "TP" ? " \u2705" : res === "SL" ? " \u274C" : ""), xl, b.ye, d.side === "buy" ? "#1d5e1d" : "#7a1d1d");
+}
+function execPos() {
+  if (sel < 0) return;
+  const d = S.draw[sel];
+  if (!d || d.type !== "pos" || d.st !== "draft") return;
+  if (Q) {
+    Q.bias = d.side === "buy" ? "up" : "down";
+    $("qE").value = d.e.toFixed(2);
+    $("qSL").value = d.sl.toFixed(2);
+    $("qTP").value = d.tp.toFixed(2);
+    snap();
+    d.st = "quiz";
+    save();
+    quizUI();
+    select(sel);
+    status("\u062A\u0645 \u0636\u0628\u0637 \u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631 \u0645\u0646 \u0627\u0644\u0645\u0631\u0628\u0639 \u2014 \u0627\u0636\u063A\u0637 \u0627\u0643\u0634\u0641");
+    return;
+  }
+  if (S.pos) return alert("\u0644\u062F\u064A\u0643 \u0635\u0641\u0642\u0629 \u0645\u0641\u062A\u0648\u062D\u0629");
+  $("sl").value = d.sl;
+  $("tp").value = d.tp;
+  $("lots").value = posLots(d).toFixed(2);
+  openPos(d.side);
+  if (S.pos) {
+    snap();
+    d.st = "live";
+    d.lots = S.pos.lots;
+    const sh = S.pos.entry - d.e;
+    d.e = S.pos.entry;
+    d.t = S.cur;
+    d.t2 = Math.max(d.t2, S.cur + B.tfs * 5);
+    save();
+    select(sel);
+    status("\u2714 \u062A\u0645 \u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0635\u0641\u0642\u0629");
+  }
+}
 function simplify(pts) {
   const P = pts.map((o) => [X(o.t), Y(o.p)]);
   let eps = 1.5, keep;
@@ -721,7 +840,8 @@ function select(i) {
     if (sel >= 0) {
       const d = S.draw[sel];
       $("sExt").classList.toggle("on", !!d.ext);
-      $("sExt").style.display = d.type === "hline" || d.type === "pen" ? "none" : "";
+      $("sExt").style.display = d.type === "hline" || d.type === "pen" || d.type === "pos" ? "none" : "";
+      $("sExec").style.display = d.type === "pos" && d.st === "draft" ? "" : "none";
     }
   }
   cv.classList.toggle("active", mode !== "none" || sel >= 0);
@@ -778,6 +898,8 @@ cv.addEventListener("pointerdown", (e) => {
       delete pend.stage;
       finish(pend);
     }
+  } else if (mode === "long" || mode === "short") {
+    finish(newPos(mode === "long" ? "buy" : "sell", q));
   } else if (mode === "pen") {
     pend = { type: "pen", pts: [P2(q)], color: S.lastColor || "#ffcc00" };
   } else if (mode === "del") {
@@ -802,7 +924,7 @@ cv.addEventListener("pointerdown", (e) => {
     if (i >= 0 && (mode === "edit" || i === sel)) {
       const d = S.draw[i];
       snap();
-      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: d.a && P2(d.a), b0: d.b && P2(d.b), pts0: d.pts && d.pts.map(P2) };
+      drag = { d, k: "body", l0: ts.coordinateToLogical(q.x), p0: q.p, a0: d.a && P2(d.a), b0: d.b && P2(d.b), pts0: d.pts && d.pts.map(P2), pos0: d.type === "pos" ? Object.assign({}, d) : null };
       if (mode !== "edit") select(i);
       return;
     }
@@ -846,10 +968,28 @@ cv.addEventListener("pointermove", (e) => {
       const l = ts.coordinateToLogical(q.x);
       if (l == null) return;
       const dl2 = l - drag.l0, dp = q.p - drag.p0, mv = (o) => ({ t: d.type === "hline" ? o.t : l2t(t2l(o.t) + dl2), p: o.p + dp });
-      if (drag.pts0) d.pts = drag.pts0.map(mv);
+      if (drag.pos0) {
+        if (d.st !== "draft") return;
+        const o = drag.pos0;
+        d.t = l2t(t2l(o.t) + dl2);
+        d.t2 = l2t(t2l(o.t2) + dl2);
+        d.e = +(o.e + dp).toFixed(2);
+        d.sl = +(o.sl + dp).toFixed(2);
+        d.tp = +(o.tp + dp).toFixed(2);
+      } else if (drag.pts0) d.pts = drag.pts0.map(mv);
       else {
         d.a = mv(drag.a0);
         if (drag.b0) d.b = mv(drag.b0);
+      }
+    } else if (d.type === "pos") {
+      if (drag.k === "w") d.t2 = Math.max(q.t, d.t + B.tfs * 2);
+      else if (drag.k !== "e" || d.st === "draft") {
+        d[drag.k] = +q.p.toFixed(2);
+        if (d.st === "live" && S.pos && drag.k !== "e") {
+          S.pos[drag.k] = d[drag.k];
+          updLines();
+          updPos();
+        }
       }
     } else if (drag.k === "c") d.off = q.p - lineP(d.a, d.b, q.t);
     else {
@@ -1019,6 +1159,7 @@ async function init() {
   S.smc = Object.assign({ on: false, istr: true, sstr: true, iob: true, sob: true, fvg: true, sw: true, zone: true }, S.smc || {});
   $("tf").value = S.tf;
   tfBtns();
+  $("riskPct").value = S.riskPct || 1;
   if (!S.scale) S.scale = { auto: true, mode: 0 };
   applyScale();
   $("bMag").classList.toggle("on", S.magnet);
@@ -1114,7 +1255,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     $("sDel").click();
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const m = { h: "hline", t: "tline", c: "chan", e: "edit", d: "del", p: "pen" }[k.toLowerCase()];
+    const m = { h: "hline", t: "tline", c: "chan", e: "edit", d: "del", p: "pen", l: "long", s: "short" }[k.toLowerCase()];
     if (m) setMode(m);
     else if (k.toLowerCase() === "m") $("bMag").click();
   }
@@ -1214,6 +1355,15 @@ $("sDel").onclick = () => {
   save();
   select(-1);
 };
+$("sExec").onclick = execPos;
+$("riskPct").onchange = () => {
+  const v = num("riskPct");
+  if (v > 0 && v <= 100) {
+    S.riskPct = v;
+    save();
+    dirty++;
+  }
+};
 $("sOk").onclick = () => select(-1);
 $("bClr").onclick = () => {
   if (confirm("\u0645\u0633\u062D \u0643\u0644 \u0627\u0644\u0631\u0633\u0648\u0645\u0627\u062A\u061F")) {
@@ -1288,7 +1438,9 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { PS: () => PS.options(), ptpx(o, r) {
+window.GR = { get Q() {
+  return Q;
+}, startChal, execPos, chal: () => CH, PS: () => PS.options(), ptpx(o, r) {
   return { x: r.left + X(o.t), y: r.top + Y(o.p) };
 }, stepBack, cpx(i) {
   const r = cv.getBoundingClientRect();
@@ -1378,6 +1530,41 @@ $("qX").onclick = () => {
   Q = null;
   quizUI();
 };
+let CH = null;
+async function chalList() {
+  if (!CH) CH = await (await fetch("data/challenges.json")).json();
+  const sc = S.chal || {};
+  $("chalList").innerHTML = CH.map((c, i) => {
+    const r = sc[c.id];
+    return `<button class="chal" data-i="${i}"><b>#${i + 1}</b> <span>${c.title}</span><small>${c.year} \u2022 ${c.diff}</small>${r ? `<em class="${r.biasOK ? "w" : "l"}">${r.biasOK ? "\u2705" : "\u274C"} ${r.score}</em>` : ""}</button>`;
+  }).join("");
+  const done = Object.keys(sc).length, ok = Object.values(sc).filter((r) => r.biasOK).length;
+  $("chalSum").textContent = `\u0623\u0646\u062C\u0632\u062A ${done}/${CH.length} \u2014 \u0635\u062D\u064A\u062D ${ok}`;
+  document.querySelectorAll("#chalList .chal").forEach((b) => b.onclick = () => startChal(CH[+b.dataset.i]));
+}
+async function startChal(c) {
+  stopPlay();
+  if (S.pos) return alert("\u0623\u063A\u0644\u0642 \u0627\u0644\u0635\u0641\u0642\u0629 \u0623\u0648\u0644\u0627\u064B");
+  S.tf = c.tf;
+  $("tf").value = c.tf;
+  tfBtns();
+  await startAt(c.t);
+  Q = { bias: null, ch: c.id };
+  $("qE").value = S.price.toFixed(2);
+  $("qSL").value = "";
+  $("qTP").value = "";
+  $("qRes").innerHTML = "<b>\u{1F3AF} " + c.title + "</b> \u2014 " + c.diff + "<br>\u0627\u0631\u0633\u0645 \u0645\u0631\u0628\u0639 \u0634\u0631\u0627\u0621/\u0628\u064A\u0639 (\u{1F4C8}/\u{1F4C9}) \u062B\u0645 \u2714 \u0646\u0641\u0651\u0630\u060C \u0623\u0648 \u0627\u062E\u062A\u0631 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u060C \u062B\u0645 \u{1F441} \u0627\u0643\u0634\u0641.";
+  $("chalP").classList.add("hidden");
+  quizUI();
+  scrollTo(0, 0);
+}
+$("bChal").onclick = async () => {
+  $("chalP").classList.toggle("hidden");
+  if (!$("chalP").classList.contains("hidden")) {
+    await chalList();
+    $("chalP").scrollIntoView();
+  }
+};
 $("qGo").onclick = async () => {
   var _a;
   if (!Q || busy) return;
@@ -1430,6 +1617,13 @@ $("qGo").onclick = async () => {
   localStorage.setItem("gr_quiz", JSON.stringify(qs));
   const ok = qs.filter((q) => q.biasCorrect).length;
   $("qRes").innerHTML = `${biasOK ? "\u2705 \u0627\u0644\u0627\u062A\u062C\u0627\u0647 \u0635\u062D\u064A\u062D" : "\u274C \u0627\u0644\u0627\u062A\u062C\u0627\u0647 \u062E\u0637\u0623"} | \u0627\u0644\u062D\u0631\u0643\u0629 ${rec.move}$ | \u0627\u0644\u0635\u0641\u0642\u0629: ${{ TP: "\u0648\u0635\u0644\u062A \u0627\u0644\u0647\u062F\u0641", SL: "\u0636\u0631\u0628 \u0627\u0644\u0648\u0642\u0641", open: "\u0645\u0627 \u0632\u0627\u0644\u062A \u0645\u0641\u062A\u0648\u062D\u0629", not_triggered: "\u0644\u0645 \u062A\u062A\u0641\u0639\u0644" }[out]} ${R != null ? "(" + R + "R)" : ""} | \u0627\u0644\u0646\u0642\u0627\u0637 ${score}<br>\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631\u0627\u062A ${qs.length} \u2014 \u062F\u0642\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647 ${(ok / qs.length * 100).toFixed(0)}%`;
+  if (Q.ch && !Q.done) {
+    const c = (CH || []).find((x) => x.id === Q.ch);
+    Q.done = 1;
+    S.chal = S.chal || {};
+    S.chal[Q.ch] = { score, biasOK, outcome: out, R, date: ds(t0), at: (/* @__PURE__ */ new Date()).toISOString() };
+    if (c) $("qRes").innerHTML += '<div class="expl">\u{1F4D8} ' + c.expl + "</div>";
+  }
   Q.bias = null;
   save();
 };
@@ -1449,7 +1643,8 @@ function coachData() {
       quizBiasAccuracy: qs.length ? +(qs.filter((q) => q.biasCorrect).length / qs.length * 100).toFixed(1) : null
     },
     trades: j,
-    quiz: qs
+    quiz: qs,
+    challenges: S.chal || {}
   };
 }
 $("bCoach").onclick = () => dl("gold-coach-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json", JSON.stringify(coachData()), "application/json");

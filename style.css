@@ -82,3 +82,8 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
 #scaleBtns button{min-width:0!important;min-height:0!important;width:20px;height:20px;padding:0;font-size:11px;font-weight:700;border-radius:4px;background:transparent;border:1px solid transparent;color:#9c9c9c;line-height:1}
 #scaleBtns button.on{color:#9afc41;background:rgba(154,252,65,.14);border-color:rgba(154,252,65,.5)}
 @media (max-width:899px){#scaleBtns button{width:21px;height:22px;font-size:12px}}
+#sExec{background:#9afc41!important;color:#000;font-weight:800;border-radius:999px}
+#chalList{display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:60vh;overflow-y:auto}
+.chal{display:flex;align-items:center;gap:8px;text-align:right;min-height:44px}.chal span{flex:1}.chal small{color:#8b8b93}.chal em{font-style:normal;font-weight:700}
+.expl{margin-top:8px;padding:8px;border-radius:8px;background:#0f1a0f;border:1px solid #2c5a2c;line-height:1.6}
+#selBar #sExec{min-width:70px;padding:0 12px;white-space:nowrap}
