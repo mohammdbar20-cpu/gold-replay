@@ -35,7 +35,7 @@ label{display:inline-flex;gap:6px;align-items:center;color:var(--mu)}
 #bPlay.play{min-height:52px;font-size:19px;font-weight:800;background:var(--g);color:#000;border:0;border-radius:999px;box-shadow:0 0 0 1px rgba(154,252,65,.25),0 4px 14px rgba(154,252,65,.18)}
 #bPlay.playing{background:#ffcc00;color:#000}
 #speed{min-height:52px;font-size:17px;font-weight:700;border-radius:999px;text-align:center;color:var(--g)}
-#bBack,#bNext,#bDay{border-radius:999px;color:var(--gr);font-weight:600}
+#bBack,#bPrev,#bNext,#bDay{border-radius:999px;color:var(--gr);font-weight:600}
 /* drawing toolbar (mobile: compact horizontal) */
 #draw{flex-wrap:nowrap;overflow-x:auto;gap:4px;scrollbar-width:none;background:var(--p1);border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)}
 #draw::-webkit-scrollbar{display:none}
@@ -244,3 +244,10 @@ html[lang=de] #quick.hasq .big{font-size:14px;padding:0 3px;letter-spacing:-.2px
 /* reading test: hide only the exact answer (header price + last-value tag); axis + crosshair stay */
 body.cs-hideprice #price{visibility:hidden}
 @media (min-width:900px){body.course.macd-on #chartWrap{height:calc(100vh - 70px - 150px)!important}}
+
+/* step back one candle */
+#bPrev{order:4}
+#ctrl #bBack{grid-column:span 3}#ctrl #bPrev{grid-column:span 3;order:5}#ctrl #bNext{grid-column:span 3;order:6}#ctrl #bDay{grid-column:span 3;order:7}
+@media (min-width:900px){#ctrl #bBack{order:1}#ctrl #bPrev{order:2}#ctrl #bRev{order:3}#ctrl #bPlay{order:4}#ctrl #bNext{order:5}#ctrl #bDay{order:6}#ctrl #speed{order:7}}
+@media (max-width:899px){#ctrl{grid-template-columns:repeat(7,1fr);gap:4px;padding:5px 4px}#ctrl>*{font-size:13px!important}
+ #ctrl #bRev{order:1}#ctrl #bPlay{order:2}#ctrl #bBack{order:3}#ctrl #bPrev{order:4}#ctrl #bNext{order:5}#ctrl #bDay{order:6}#ctrl #speed{order:7}}

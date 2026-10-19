@@ -1669,6 +1669,15 @@ async function stepBack(auto) {
   }
 }
 $("bBack").onclick = () => stepBack();
+async function stepPrevBar() {
+  if (Q) return;
+  stopPlay();
+  for (let i = 0; busy && i < 200; i++) await new Promise((r) => setTimeout(r, 50));
+  const c = S.cur;
+  await stepBack("bar");
+  if (S.cur !== c) status("|\u25C0 \u0634\u0645\u0639\u0629 \u0644\u0648\u0631\u0627: " + ds(S.cur));
+}
+$("bPrev").onclick = stepPrevBar;
 $("bNext").onclick = stepNext;
 document.addEventListener("keydown", (e) => {
   const tg = e.target, tn = tg && tg.tagName;
@@ -1685,9 +1694,10 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (e.shiftKey) $("bDay").click();
     else $("bNext").click();
-  } else if (k === "ArrowLeft" && e.shiftKey) {
+  } else if (k === "ArrowLeft") {
     e.preventDefault();
-    $("bBack").click();
+    if (e.shiftKey) $("bBack").click();
+    else $("bPrev").click();
   } else if ((e.ctrlKey || e.metaKey) && (k === "z" || k === "Z")) {
     e.preventDefault();
     undo();
@@ -2053,6 +2063,7 @@ let Q = null;
 function quizUI() {
   $("quizP").classList.toggle("hidden", !Q);
   $("bBack").disabled = !!Q;
+  $("bPrev").disabled = !!Q;
   $("bRev").disabled = !!Q;
   if (Q) stopPlay();
   if (!Q) return;

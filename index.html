@@ -7,7 +7,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=35"></head><body>
+<link rel="stylesheet" href="style.css?v=36"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>الغرفة</b><small>XAUUSD</small></span><span id="clock">—</span><button id="bDate" class="hdate" title="انتقال إلى تاريخ" aria-label="انتقال إلى تاريخ">📅</button> <span id="price"></span> <span id="status"></span></header>
@@ -39,7 +39,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
 <div class="row" id="ctrl">
  <button id="bPlay" class="play" title="تشغيل/إيقاف (مسافة)" aria-label="تشغيل/إيقاف">▶️</button>
  <select id="speed" aria-label="السرعة" title="السرعة"><option value="4000">0.25x</option><option value="2000">0.5x</option><option value="1000" selected>1x</option><option value="500">2x</option><option value="250">4x</option><option value="100">10x</option></select>
- <button id="bRev" title="تشغيل عكسي (Shift+مسافة)" aria-label="تشغيل عكسي">◀️</button><button id="bBack" title="رجوع يوم (Shift+←)">⏪ يوم</button><button id="bNext" title="الشمعة التالية (→)">▶| شمعة</button><button id="bDay" title="تقدم يوم (Shift+→)">يوم ⏩</button>
+ <button id="bRev" title="تشغيل عكسي (Shift+مسافة)" aria-label="تشغيل عكسي">◀️</button><button id="bBack" title="رجوع يوم (Shift+←)">⏪ يوم</button><button id="bPrev" title="شمعة لورا (←)" aria-label="شمعة لورا">|◀ شمعة</button><button id="bNext" title="الشمعة التالية (→)">▶| شمعة</button><button id="bDay" title="تقدم يوم (Shift+→)">يوم ⏩</button>
 </div>
 <div class="row" id="draw">
  <button data-m="hline" title="خط أفقي (H)"><i>—</i><span>أفقي</span></button><button data-m="tline" title="خط ترند (T)"><i>╱</i><span>ترند</span></button><button data-m="chan" title="قناة سعرية (C)"><i>⫽</i><span>قناة</span></button><button data-m="long" title="مركز شراء (L)"><i>📈</i><span>شراء</span></button><button data-m="short" title="مركز بيع (S)"><i>📉</i><span>بيع</span></button><button data-m="pen" title="قلم حر (P)"><i>🖊</i><span>قلم</span></button>
@@ -91,5 +91,5 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="i18n.js?v=35"></script><div id="modal" class="hidden"></div>
-<script src="app.js?v=35"></script></body></html>
+<script src="i18n.js?v=36"></script><div id="modal" class="hidden"></div>
+<script src="app.js?v=36"></script></body></html>

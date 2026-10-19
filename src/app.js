@@ -411,6 +411,8 @@ async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&
  S.cur=to;await render();save();updLines();updPos();if(auto!=='bar')status('⏪ رجوع يوم: '+cut);
 }catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
 $('bBack').onclick=()=>stepBack();
+async function stepPrevBar(){if(Q)return;stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50));const c=S.cur;await stepBack('bar');if(S.cur!==c)status('|◀ شمعة لورا: '+ds(S.cur))}
+$('bPrev').onclick=stepPrevBar;
 $('bNext').onclick=stepNext;
 // ---------- keyboard shortcuts (desktop) ----------
 document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT')return;
@@ -418,7 +420,7 @@ document.addEventListener('keydown',e=>{const tg=e.target,tn=tg&&tg.tagName;if(t
  if(k===' '&&e.shiftKey){e.preventDefault();$('bRev').click()}
  else if(k===' '){e.preventDefault();$('bPlay').click()}
  else if(k==='ArrowRight'){e.preventDefault();if(e.shiftKey)$('bDay').click();else $('bNext').click()}
- else if(k==='ArrowLeft'&&e.shiftKey){e.preventDefault();$('bBack').click()}
+ else if(k==='ArrowLeft'){e.preventDefault();if(e.shiftKey)$('bBack').click();else $('bPrev').click()}
  else if((e.ctrlKey||e.metaKey)&&(k==='z'||k==='Z')){e.preventDefault();undo()}
  else if(k==='Escape'){if(mode!=='none')setMode(mode);else select(-1)}
  else if((k==='Delete'||k==='Backspace')&&sel>=0){e.preventDefault();$('sDel').click()}
@@ -493,7 +495,7 @@ function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)re
    strongHigh:Sw.trend===-1,strongLow:Sw.trend===1}};}
 // ---------- quiz ----------
 let Q=null;
-function quizUI(){$('quizP').classList.toggle('hidden',!Q);$('bBack').disabled=!!Q;$('bRev').disabled=!!Q;if(Q)stopPlay();if(!Q)return;$('qBias').textContent=Q.bias?('الاتجاه: '+(Q.bias==='up'?'صاعد ⬆':'هابط ⬇')):'اختر الاتجاه';}
+function quizUI(){$('quizP').classList.toggle('hidden',!Q);$('bBack').disabled=!!Q;$('bPrev').disabled=!!Q;$('bRev').disabled=!!Q;if(Q)stopPlay();if(!Q)return;$('qBias').textContent=Q.bias?('الاتجاه: '+(Q.bias==='up'?'صاعد ⬆':'هابط ⬇')):'اختر الاتجاه';}
 $('bQuiz').onclick=async()=>{stopPlay();if(S.ps.length)return alert('أغلق الصفقة أولاً');await startAt(randStart());Q={bias:null};$('qE').value=S.price.toFixed(2);$('qSL').value='';$('qTP').value='';$('qRes').textContent='';quizUI();$('quizP').scrollIntoView();};
 $('qUp').onclick=()=>{if(Q){Q.bias='up';quizUI()}};$('qDn').onclick=()=>{if(Q){Q.bias='down';quizUI()}};
 $('qX').onclick=()=>{Q=null;quizUI()};
