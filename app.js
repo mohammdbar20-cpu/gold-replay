@@ -170,7 +170,7 @@ function setJournal(j) {
 }
 const chart = LightweightCharts.createChart($("chart"), {
   layout: { background: { color: "#000" }, textColor: "#bbb" },
-  grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+  grid: { vertLines: { visible: true, color: "rgba(255,255,255,0.06)", style: 1 }, horzLines: { visible: true, color: "rgba(255,255,255,0.06)", style: 1 } },
   rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
   timeScale: { borderColor: "#333", timeVisible: true, rightOffset: 8 },
   crosshair: { mode: 0 },
@@ -255,7 +255,7 @@ function macdInit() {
   if (MC) return;
   MC = LightweightCharts.createChart($("macdC"), {
     layout: { background: { color: "#000" }, textColor: "#888" },
-    grid: { vertLines: { visible: false }, horzLines: { color: "#111" } },
+    grid: { vertLines: { visible: true, color: "rgba(255,255,255,0.06)", style: 1 }, horzLines: { visible: true, color: "rgba(255,255,255,0.06)", style: 1 } },
     rightPriceScale: { borderColor: "#333", minimumWidth: 66 },
     timeScale: { visible: false, rightOffset: 8 },
     crosshair: { mode: 0 },
@@ -445,17 +445,7 @@ async function advance(to) {
     status("\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
     return false;
   }
-  if (S.ps.some((p) => p.sl != null || p.tp != null || p.trail)) {
-    const M = await m1(S.cur + 60, to);
-    for (let i = 0; i < M.n && S.ps.length; i++) {
-      const t = M.t[i];
-      if (t <= S.cur || t > to) continue;
-      for (const p of S.ps.slice()) {
-        trailUpd(M, i, p);
-        checkHit(M, i, p);
-      }
-    }
-  }
+  await scanHits(S.cur, to);
   S.cur = to;
   await render();
   save();
@@ -509,25 +499,45 @@ const num = (id) => {
 function checkHit(M, i, p) {
   const d = p.side === "buy" ? 1 : -1;
   const slHit = p.sl != null && (d > 0 ? M.l[i] <= p.sl : M.h[i] >= p.sl), tpHit = p.tp != null && (d > 0 ? M.h[i] >= p.tp : M.l[i] <= p.tp);
+  const o = M.o[i], gapS = p.sl != null && (d > 0 ? o < p.sl : o > p.sl), gapT = p.tp != null && (d > 0 ? o > p.tp : o < p.tp);
   if (slHit) {
-    closePos(p.sl, "SL", M.t[i], p);
+    closePos(gapS ? o : p.sl, "SL", M.t[i], p);
     return true;
   }
   if (tpHit) {
-    closePos(p.tp, "TP", M.t[i], p);
+    closePos(gapT ? o : p.tp, "TP", M.t[i], p);
     return true;
   }
   return false;
 }
+async function scanHits(a, b) {
+  if (!S.ps.some((p) => p.sl != null || p.tp != null || p.trail)) return;
+  let t = a;
+  while (t < b && S.ps.length) {
+    const d = new Date(t * 1e3), me = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1e3, e = Math.min(b, me - 60);
+    const M = await m1(t + 60, e);
+    for (let i = 0; i < M.n && S.ps.length; i++) {
+      const x = M.t[i];
+      if (x <= a || x > b) continue;
+      for (const p of S.ps.slice()) {
+        if (x <= p.open) continue;
+        trailUpd(M, i, p);
+        checkHit(M, i, p);
+      }
+    }
+    t = me - 60;
+    if (e >= b) break;
+  }
+}
 const PIP = 0.1;
-function openPos(side, quick) {
+function openPos(side, quick, tool) {
   stopPlay();
   const lots = quick ? S.qlot || 0.01 : num("lots");
   if (!lots || lots <= 0) return alert("\u0623\u062F\u062E\u0644 \u062D\u062C\u0645 \u0627\u0644\u0644\u0648\u062A");
   const e = S.price, sl = quick ? null : num("sl"), tp = quick ? null : num("tp"), d = side === "buy" ? 1 : -1;
   if (sl != null && (sl - e) * d >= 0) return alert("\u0648\u0642\u0641 \u0627\u0644\u062E\u0633\u0627\u0631\u0629 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
   if (tp != null && (tp - e) * d <= 0) return alert("\u0627\u0644\u0647\u062F\u0641 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
-  const p = { id: Date.now() + Math.floor(Math.random() * 1e3), side, entry: e, sl, sl0: sl, tp, lots, open: S.cur, tf: S.tf, why: quick ? "" : $("why").value, feel: $("feel").value, conf: FEEL, bal0: S.balance, quick: !!quick, ctx: Object.assign(snapCtx(), { confidence: FEEL }) };
+  const p = { id: Date.now() + Math.floor(Math.random() * 1e3), side, entry: e, sl, sl0: sl, tp, lots, open: S.cur, tf: S.tf, why: quick ? "" : $("why").value, feel: $("feel").value, conf: FEEL, bal0: S.balance, quick: !!(quick || tool), tool: tool ? true : void 0, ctx: Object.assign(snapCtx(), { confidence: FEEL }) };
   S.ps.push(p);
   save();
   updLines();
@@ -542,14 +552,16 @@ function closePos(px, reason, t, p, frac) {
   const part = frac && frac < 1 && p.lots >= 0.02;
   const cl = part ? Math.max(0.01, Math.round(p.lots * frac * 100) / 100) : p.lots;
   if (S.draw && !part) S.draw.forEach((d2) => {
-    if (d2.type === "pos" && d2.st === "live" && (d2.posId == null || d2.posId === p.id)) {
+    if (d2.type === "pos" && d2.st === "live" && d2.posId === p.id) {
       d2.st = "done";
       d2.res = reason;
-      d2.t2 = Math.max(d2.t2, tc);
+      d2.t2live = d2.t2;
+      d2.t2 = Math.max(d2.t + 60, tc);
+      d2.exit = +px.toFixed(2);
     }
   });
   const d = p.side === "buy" ? 1 : -1, gross = +((px - p.entry) * d * OZ * cl).toFixed(2), cst = tradeCost(p, tc, cl), pnl = +(gross - cst.total).toFixed(2), sl0 = p.sl0 != null ? p.sl0 : p.sl, risk = sl0 != null && Math.abs(p.entry - sl0) > 0 ? Math.abs(p.entry - sl0) * OZ * cl : null, riskD = risk || (p.bal0 || S.balance) * (S.riskPct || 1) / 100 * cl / p.lots;
-  const tr2 = { id: Date.now() + Math.floor(Math.random() * 1e3), openT: p.open, closeT: tc, bal0: p.bal0, open: ds(p.open), close: ds(tc), dur: Math.round((tc - p.open) / 60), tf: p.tf, side: p.side, pid: p.id, lots: cl, partial: part || void 0, sl0, be: p.be || void 0, trail: p.trail ? true : void 0, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, gross, cost: cst.total, costs: cst, pnl, R: +(pnl / riskD).toFixed(2), Rg: +(gross / riskD).toFixed(2), Rest: risk ? void 0 : true, why: p.why, feeling: p.feel || "", conf: p.conf || null, quick: !!p.quick, ctx: p.ctx };
+  const tr2 = { id: Date.now() + Math.floor(Math.random() * 1e3), openT: p.open, closeT: tc, bal0: p.bal0, open: ds(p.open), close: ds(tc), dur: Math.round((tc - p.open) / 60), tf: p.tf, side: p.side, pid: p.id, lots: cl, partial: part || void 0, sl0, be: p.be || void 0, trail: p.trail ? true : void 0, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, gross, cost: cst.total, costs: cst, pnl, R: +(pnl / riskD).toFixed(2), Rg: +(gross / riskD).toFixed(2), Rest: risk ? void 0 : true, why: p.why, feeling: p.feel || "", conf: p.conf || null, quick: !!p.quick, tool: p.tool || void 0, ctx: p.ctx };
   const j = journal();
   j.push(tr2);
   setJournal(j);
@@ -1063,7 +1075,7 @@ function posRes(d) {
   return null;
 }
 function posBox(d, pw) {
-  const x1 = X(d.t), x2 = X(d.t2);
+  const x1 = X(d.t), x2 = X(d.st === "live" ? Math.max(d.t2, S.cur + B.tfs * 3) : d.t2);
   return { x1, x2, ye: Y(d.e), ys: Y(d.sl), yt: Y(d.tp) };
 }
 function posHit(d, q) {
@@ -1101,7 +1113,7 @@ function drawPos(d, pw) {
   const xl = Math.min(b.x1, b.x2) + 2;
   lab("\u0627\u0644\u0647\u062F\u0641 " + d.tp.toFixed(2) + "  +" + Math.abs(d.tp - d.e).toFixed(2) + "  ($" + rew.toFixed(0) + ")  RR 1:" + rr.toFixed(2), xl, b.yt + (b.yt < b.ye ? -10 : 10), "#087a66");
   lab("\u0627\u0644\u0648\u0642\u0641 " + d.sl.toFixed(2) + "  -" + Math.abs(d.e - d.sl).toFixed(2) + "  | " + lots.toFixed(2) + " \u0644\u0648\u062A | \u0645\u062E\u0627\u0637\u0631\u0629 $" + risk.toFixed(0), xl, b.ys + (b.ys > b.ye ? 10 : -10), "#a3202e");
-  lab((d.side === "buy" ? "\u0634\u0631\u0627\u0621 " : "\u0628\u064A\u0639 ") + d.e.toFixed(2) + (d.st === "live" ? " \u2022 \u0645\u0646\u0641\u0630\u0629" : d.st === "done" ? " \u2022 " + (d.res || "") : "") + (res === "TP" ? " \u2705" : res === "SL" ? " \u274C" : ""), xl, b.ye, d.side === "buy" ? "#1d5e1d" : "#7a1d1d");
+  lab((d.side === "buy" ? "\u0634\u0631\u0627\u0621 " : "\u0628\u064A\u0639 ") + d.e.toFixed(2) + (d.st === "live" ? " \u2022 \u0645\u0646\u0641\u0630\u0629" : d.st === "done" ? " \u2022 " + (d.res || "") + (d.exit != null ? " @ " + d.exit.toFixed(2) : "") : "") + (res === "TP" ? " \u2705" : res === "SL" ? " \u274C" : ""), xl, b.ye, d.side === "buy" ? "#1d5e1d" : "#7a1d1d");
 }
 function execPos() {
   if (sel < 0) return;
@@ -1128,7 +1140,7 @@ function execPos() {
   $("sl").value = d.sl;
   $("tp").value = d.tp;
   $("lots").value = posLots(d).toFixed(2);
-  const np = openPos(d.side);
+  const np = openPos(d.side, false, true);
   if (np) {
     d.st = "live";
     d.posId = np.id;
@@ -1244,6 +1256,7 @@ cv.addEventListener("pointerdown", (e) => {
     }
   } else if (mode === "long" || mode === "short") {
     finish(newPos(mode === "long" ? "buy" : "sell", q));
+    if (!Q && !window.__course) execPos();
   } else if (mode === "pen") {
     pend = applyLast({ type: "pen", pts: [P2(q)] });
     if (!pend.color) pend.color = "#ffcc00";
@@ -1343,7 +1356,7 @@ cv.addEventListener("pointermove", (e) => {
       else if (drag.k !== "e" || d.st === "draft") {
         d[drag.k] = +q.p.toFixed(2);
         if (d.st === "live" && drag.k !== "e") {
-          const lp = S.ps.find((x) => x.id === d.posId) || S.ps[0];
+          const lp = S.ps.find((x) => x.id === d.posId);
           if (lp) {
             lp[drag.k] = d[drag.k];
             updLines();
@@ -1615,11 +1628,27 @@ function rollbackTo(to) {
         ex.lots = +(ex.lots + last.lots).toFixed(2);
         continue;
       }
-      S.ps.push({ id: last.pid || last.id, sl0: last.sl0, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
+      S.ps.push({ id: last.pid || last.id, sl0: last.sl0, side: last.side, quick: last.quick, tool: last.tool, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
     }
     setJournal(keep);
     renderJournal();
   }
+  (S.draw || []).forEach((d) => {
+    if (d.type !== "pos" || d.posId == null) return;
+    const has = S.ps.some((p) => p.id === d.posId);
+    if (d.st === "done" && has) {
+      d.st = "live";
+      d.res = null;
+      d.exit = null;
+      if (d.t2live) d.t2 = d.t2live;
+    } else if ((d.st === "live" || d.st === "done") && !has && !journal().some((t) => (t.pid || t.id) === d.posId)) {
+      d.st = "draft";
+      d.posId = null;
+      d.res = null;
+      d.exit = null;
+    }
+  });
+  dirty++;
 }
 async function stepBack(auto) {
   if (Q) return;
@@ -1992,7 +2021,9 @@ $("imp").onchange = async (e) => {
     alert("\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
   }
 };
-window.GR = { chart, ser, LC: (x) => LC(x), render: () => render(), t2l: (t) => t2l(t), l2t: (l) => l2t(l), X: (t) => X(t), Y: (p) => Y(p), coach: () => coachData(), vis: () => {
+window.GR = { chart, ser, get MC() {
+  return MC;
+}, m1: (a, b) => m1(a, b), execPos: () => execPos(), select: (i) => select(i), LC: (x) => LC(x), render: () => render(), t2l: (t) => t2l(t), l2t: (l) => l2t(l), X: (t) => X(t), Y: (p) => Y(p), coach: () => coachData(), vis: () => {
   const d = ser.data(), l = d[d.length - 1], lr = ts.getVisibleLogicalRange(), vr = ts.getVisibleRange();
   return { n: d.length, lastT: l ? l.time - off(B.U[B.n - 1]) : null, lastC: l ? l.close : null, cur: S.cur, curBar: B.U[B.n - 1], bucket: B.A.t[B.k], nextB: B.A.t[B.k + 1] || null, price: S.price, hdr: $("price").textContent, lr: lr && [lr.from, lr.to], vrTo: vr && vr.to, lastTime: l && l.time };
 }, ema: () => emaSer ? emaSer.map((x) => {
@@ -2662,6 +2693,10 @@ async function jumpTo(T) {
   busy = true;
   try {
     if (to < S.cur) rollbackTo(to);
+    else if (S.ps.length) {
+      status("\u23F3 \u0641\u062D\u0635 \u0627\u0644\u0648\u0642\u0641/\u0627\u0644\u0647\u062F\u0641\u2026");
+      await scanHits(S.cur, to);
+    }
     S.cur = to;
     mPrev = null;
     emaPrev = null;

@@ -47,7 +47,7 @@ function journal(){return LS('gr_journal')||[]}
 function setJournal(j){localStorage.setItem('gr_journal',JSON.stringify(j));}
 // ---------- chart ----------
 const chart=LightweightCharts.createChart($('chart'),{layout:{background:{color:'#000'},textColor:'#bbb'},
- grid:{vertLines:{visible:false},horzLines:{visible:false}},rightPriceScale:{borderColor:'#333',minimumWidth:66},
+ grid:{vertLines:{visible:true,color:'rgba(255,255,255,0.06)',style:1},horzLines:{visible:true,color:'rgba(255,255,255,0.06)',style:1}},rightPriceScale:{borderColor:'#333',minimumWidth:66},
  timeScale:{borderColor:'#333',timeVisible:true,rightOffset:8},crosshair:{mode:0},autoSize:false,width:$('chart').clientWidth||600,height:$('chart').clientHeight||400});
 const ser=chart.addCandlestickSeries({upColor:'#9afc41',downColor:'#9c9c9c',borderUpColor:'#9c9c9c',borderDownColor:'#9c9c9c',wickUpColor:'#9c9c9c',wickDownColor:'#9c9c9c',priceFormat:{type:'price',precision:2,minMove:0.01}});
 // explicit sizing (instead of autoSize): works in every browser and is re-checked on layout changes (course sheet, panels, resize)
@@ -73,7 +73,7 @@ function updEma(force){const m=S.ema;if(!m||!B)return;
  emaPrev={key,n:B.n};}
 function emaUI(){const m=S.ema;$('bEma').classList.toggle('on',m.on);$('emaLeg').classList.toggle('hidden',!m.on);['e1','e2','e3'].forEach((id,i)=>$(id).value=m.p[i]);}
 let MC=null,mH,mM,mS,mPrev=null;
-function macdInit(){if(MC)return;MC=LightweightCharts.createChart($('macdC'),{layout:{background:{color:'#000'},textColor:'#888'},grid:{vertLines:{visible:false},horzLines:{color:'#111'}},
+function macdInit(){if(MC)return;MC=LightweightCharts.createChart($('macdC'),{layout:{background:{color:'#000'},textColor:'#888'},grid:{vertLines:{visible:true,color:'rgba(255,255,255,0.06)',style:1},horzLines:{visible:true,color:'rgba(255,255,255,0.06)',style:1}},
   rightPriceScale:{borderColor:'#333',minimumWidth:66},timeScale:{visible:false,rightOffset:8},crosshair:{mode:0},autoSize:false,width:$('macdC').clientWidth||600,height:$('macdC').clientHeight||150,handleScroll:false,handleScale:false});
  mH=MC.addHistogramSeries({priceLineVisible:false,lastValueVisible:false});mM=MC.addLineSeries({color:'#4aa3ff',lineWidth:1,priceLineVisible:false});mS=MC.addLineSeries({color:'#ff9800',lineWidth:1,priceLineVisible:false});
  chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r&&MC&&S.macd&&S.macd.on)MC.timeScale().setVisibleLogicalRange(r)});}
@@ -133,7 +133,7 @@ async function targetNext(){const A=B.A,k=B.k;
  return null;}
 async function advance(to){
  if(to===null||to<=S.cur){stopPlay();status('نهاية البيانات');return false}
- if(S.ps.some(p=>p.sl!=null||p.tp!=null||p.trail)){const M=await m1(S.cur+60,to);for(let i=0;i<M.n&&S.ps.length;i++){const t=M.t[i];if(t<=S.cur||t>to)continue;for(const p of S.ps.slice()){trailUpd(M,i,p);checkHit(M,i,p);}}}
+ await scanHits(S.cur,to);
  S.cur=to;await render();save();return true;}
 async function doStep(fn){if(busy)return;busy=true;try{await advance(await fn())}catch(e){console.error(e);status('خطأ: '+e.message)}busy=false;}
 const stepNext=()=>doStep(targetNext);
@@ -145,17 +145,22 @@ function status(s){$('status').textContent=s;setTimeout(()=>{if($('status').text
 const num=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:null};
 function checkHit(M,i,p){const d=p.side==='buy'?1:-1;
  const slHit=p.sl!=null&&(d>0?M.l[i]<=p.sl:M.h[i]>=p.sl), tpHit=p.tp!=null&&(d>0?M.h[i]>=p.tp:M.l[i]<=p.tp);
- if(slHit){closePos(p.sl,'SL',M.t[i],p);return true}if(tpHit){closePos(p.tp,'TP',M.t[i],p);return true}return false;}
+ // gap rule: if the minute opens beyond the level, fill at that open (no better than reality); both hit in one minute -> SL first
+ const o=M.o[i],gapS=p.sl!=null&&(d>0?o<p.sl:o>p.sl),gapT=p.tp!=null&&(d>0?o>p.tp:o<p.tp);
+ if(slHit){closePos(gapS?o:p.sl,'SL',M.t[i],p);return true}if(tpHit){closePos(gapT?o:p.tp,'TP',M.t[i],p);return true}return false;}
+// scan SL/TP/trailing of all open trades through (a,b], month by month (keeps memory low for long jumps)
+async function scanHits(a,b){if(!S.ps.some(p=>p.sl!=null||p.tp!=null||p.trail))return;let t=a;while(t<b&&S.ps.length){const d=new Date(t*1000),me=Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)/1000,e=Math.min(b,me-60);
+  const M=await m1(t+60,e);for(let i=0;i<M.n&&S.ps.length;i++){const x=M.t[i];if(x<=a||x>b)continue;for(const p of S.ps.slice()){if(x<=p.open)continue;trailUpd(M,i,p);checkHit(M,i,p)}}t=me-60;if(e>=b)break}}
 const PIP=0.1;
-function openPos(side,quick){stopPlay();const lots=quick?(S.qlot||0.01):num('lots');if(!lots||lots<=0)return alert('أدخل حجم اللوت');
+function openPos(side,quick,tool){stopPlay();const lots=quick?(S.qlot||0.01):num('lots');if(!lots||lots<=0)return alert('أدخل حجم اللوت');
  const e=S.price,sl=quick?null:num('sl'),tp=quick?null:num('tp'),d=side==='buy'?1:-1;
  if(sl!=null&&(sl-e)*d>=0)return alert('وقف الخسارة في الجهة الخطأ');if(tp!=null&&(tp-e)*d<=0)return alert('الهدف في الجهة الخطأ');
- const p={id:Date.now()+Math.floor(Math.random()*1000),side,entry:e,sl,sl0:sl,tp,lots,open:S.cur,tf:S.tf,why:quick?'':$('why').value,feel:$('feel').value,conf:FEEL,bal0:S.balance,quick:!!quick,ctx:Object.assign(snapCtx(),{confidence:FEEL})};
+ const p={id:Date.now()+Math.floor(Math.random()*1000),side,entry:e,sl,sl0:sl,tp,lots,open:S.cur,tf:S.tf,why:quick?'':$('why').value,feel:$('feel').value,conf:FEEL,bal0:S.balance,quick:!!(quick||tool),tool:tool?true:undefined,ctx:Object.assign(snapCtx(),{confidence:FEEL})};
  S.ps.push(p);save();updLines();updPos();return p;}
 function closePos(px,reason,t,p,frac){stopPlay();p=p||S.ps[0];if(!p)return;const tc=t||S.cur;const part=frac&&frac<1&&p.lots>=0.02;const cl=part?Math.max(0.01,Math.round(p.lots*frac*100)/100):p.lots;
- if(S.draw&&!part)S.draw.forEach(d=>{if(d.type==='pos'&&d.st==='live'&&(d.posId==null||d.posId===p.id)){d.st='done';d.res=reason;d.t2=Math.max(d.t2,tc)}});
+ if(S.draw&&!part)S.draw.forEach(d=>{if(d.type==='pos'&&d.st==='live'&&d.posId===p.id){d.st='done';d.res=reason;d.t2live=d.t2;d.t2=Math.max(d.t+60,tc);d.exit=+px.toFixed(2)}});
  const d=p.side==='buy'?1:-1,gross=+((px-p.entry)*d*OZ*cl).toFixed(2),cst=tradeCost(p,tc,cl),pnl=+(gross-cst.total).toFixed(2),sl0=p.sl0!=null?p.sl0:p.sl,risk=sl0!=null&&Math.abs(p.entry-sl0)>0?Math.abs(p.entry-sl0)*OZ*cl:null,riskD=risk||((p.bal0||S.balance)*(S.riskPct||1)/100*cl/p.lots);
- const tr={id:Date.now()+Math.floor(Math.random()*1000),openT:p.open,closeT:tc,bal0:p.bal0,open:ds(p.open),close:ds(tc),dur:Math.round((tc-p.open)/60),tf:p.tf,side:p.side,pid:p.id,lots:cl,partial:part||undefined,sl0,be:p.be||undefined,trail:p.trail?true:undefined,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,gross,cost:cst.total,costs:cst,pnl,R:+(pnl/riskD).toFixed(2),Rg:+(gross/riskD).toFixed(2),Rest:risk?undefined:true,why:p.why,feeling:p.feel||'',conf:p.conf||null,quick:!!p.quick,ctx:p.ctx};
+ const tr={id:Date.now()+Math.floor(Math.random()*1000),openT:p.open,closeT:tc,bal0:p.bal0,open:ds(p.open),close:ds(tc),dur:Math.round((tc-p.open)/60),tf:p.tf,side:p.side,pid:p.id,lots:cl,partial:part||undefined,sl0,be:p.be||undefined,trail:p.trail?true:undefined,entry:p.entry,sl:p.sl,tp:p.tp,exit:+px.toFixed(2),reason,gross,cost:cst.total,costs:cst,pnl,R:+(pnl/riskD).toFixed(2),Rg:+(gross/riskD).toFixed(2),Rest:risk?undefined:true,why:p.why,feeling:p.feel||'',conf:p.conf||null,quick:!!p.quick,tool:p.tool||undefined,ctx:p.ctx};
  const j=journal();j.push(tr);setJournal(j);S.balance=+(S.balance+pnl).toFixed(2);if(part){p.lots=+(p.lots-cl).toFixed(2);p.partials=(p.partials||0)+1}else S.ps=S.ps.filter(x=>x!==p);save();
  status((reason==='TP'?'✅ ':reason==='SL'?'❌ ':'')+'أغلقت الصفقة: '+pnl+'$');if(!S.ps.length){$('why').value='';setFeel(null)}
  updLines();updPos();renderJournal();}
@@ -288,7 +293,7 @@ function newPos(side,q){const a=atrNow(),e=+q.p.toFixed(2),d=side==='buy'?1:-1;
 function posLots(d){const r=Math.abs(d.e-d.sl)*OZ;if(!r)return 0.01;return Math.max(0.01,Math.floor(S.balance*(S.riskPct||1)/100/r*100)/100)}
 function posRes(d){if(d.st==='done')return d.res;const U=B.U,n=B.nDone;const dir=d.side==='buy'?1:-1;let i=bs(U,d.t,B.n);if(i<0)i=0;
  for(i=i+1;i<n&&U[i]<=d.t2;i++){if(dir>0?B.L[i]<=d.sl:B.H[i]>=d.sl)return 'SL';if(dir>0?B.H[i]>=d.tp:B.L[i]<=d.tp)return 'TP'}return null}
-function posBox(d,pw){const x1=X(d.t),x2=X(d.t2);return {x1,x2,ye:Y(d.e),ys:Y(d.sl),yt:Y(d.tp)}}
+function posBox(d,pw){const x1=X(d.t),x2=X(d.st==='live'?Math.max(d.t2,S.cur+B.tfs*3):d.t2);return {x1,x2,ye:Y(d.e),ys:Y(d.sl),yt:Y(d.tp)}}
 function posHit(d,q){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v==null))return false;const y0=Math.min(b.ys,b.yt),y1=Math.max(b.ys,b.yt);return q.x>=Math.min(b.x1,b.x2)-6&&q.x<=Math.max(b.x1,b.x2)+6&&q.y>=y0-6&&q.y<=y1+6}
 function drawPos(d,pw){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v==null))return;const res=posRes(d),w=b.x2-b.x1;
  cx.fillStyle=res==='TP'?'rgba(8,153,129,.5)':'rgba(8,153,129,.22)';cx.fillRect(b.x1,Math.min(b.ye,b.yt),w,Math.abs(b.yt-b.ye));
@@ -299,11 +304,11 @@ function drawPos(d,pw){const b=posBox(d);if([b.x1,b.x2,b.ye,b.ys,b.yt].some(v=>v
  const xl=Math.min(b.x1,b.x2)+2;
  lab('الهدف '+d.tp.toFixed(2)+'  +'+Math.abs(d.tp-d.e).toFixed(2)+'  ($'+rew.toFixed(0)+')  RR 1:'+rr.toFixed(2),xl,b.yt+(b.yt<b.ye?-10:10),'#087a66');
  lab('الوقف '+d.sl.toFixed(2)+'  -'+Math.abs(d.e-d.sl).toFixed(2)+'  | '+lots.toFixed(2)+' لوت | مخاطرة $'+risk.toFixed(0),xl,b.ys+(b.ys>b.ye?10:-10),'#a3202e');
- lab((d.side==='buy'?'شراء ':'بيع ')+d.e.toFixed(2)+(d.st==='live'?' • منفذة':d.st==='done'?(' • '+(d.res||'')):'')+(res==='TP'?' ✅':res==='SL'?' ❌':''),xl,b.ye,d.side==='buy'?'#1d5e1d':'#7a1d1d');}
+ lab((d.side==='buy'?'شراء ':'بيع ')+d.e.toFixed(2)+(d.st==='live'?' • منفذة':d.st==='done'?(' • '+(d.res||'')+(d.exit!=null?' @ '+d.exit.toFixed(2):'')):'')+(res==='TP'?' ✅':res==='SL'?' ❌':''),xl,b.ye,d.side==='buy'?'#1d5e1d':'#7a1d1d');}
 function execPos(){if(sel<0)return;const d=S.draw[sel];if(!d||d.type!=='pos'||d.st!=='draft')return;
  if(Q){Q.bias=d.side==='buy'?'up':'down';$('qE').value=d.e.toFixed(2);$('qSL').value=d.sl.toFixed(2);$('qTP').value=d.tp.toFixed(2);snap();d.st='quiz';save();quizUI();select(sel);status('تم ضبط الاختبار من المربع — اضغط اكشف');return}
   const dp=S.price-d.e;snap();d.e=+(d.e+dp).toFixed(2);d.sl=+(d.sl+dp).toFixed(2);d.tp=+(d.tp+dp).toFixed(2);
- $('sl').value=d.sl;$('tp').value=d.tp;$('lots').value=posLots(d).toFixed(2);const np=openPos(d.side);
+ $('sl').value=d.sl;$('tp').value=d.tp;$('lots').value=posLots(d).toFixed(2);const np=openPos(d.side,false,true);
  if(np){d.st='live';d.posId=np.id;d.lots=np.lots;d.e=np.entry;d.t=S.cur;d.t2=Math.max(d.t2,S.cur+B.tfs*5);save();select(sel);status('✔ تم تنفيذ الصفقة')}}
 // Ramer-Douglas-Peucker in screen pixels (eps 1.5px), capped at 300 points
 function simplify(pts){const P=pts.map(o=>[X(o.t),Y(o.p)]);let eps=1.5,keep;
@@ -324,7 +329,7 @@ cv.addEventListener('pointerdown',e=>{if(!B)return;let q=pt(e);if(q.t==null||q.p
  else if(mode==='tline'){if(!pend)pend={type:'tline',a:P2(qm),b:P2(qm)};else{pend.b=P2(qm);finish(pend)}}
  else if(mode==='chan'){if(!pend)pend={type:'chan',a:P2(qm),b:P2(qm),off:0,stage:1};else if(pend.stage===1){pend.b=P2(qm);pend.stage=2}
   else{pend.off=q.p-lineP(pend.a,pend.b,q.t);delete pend.stage;finish(pend)}}
- else if(mode==='long'||mode==='short'){finish(newPos(mode==='long'?'buy':'sell',q));}
+ else if(mode==='long'||mode==='short'){finish(newPos(mode==='long'?'buy':'sell',q));if(!Q&&!window.__course)execPos();}
  else if(mode==='pen'){pend=applyLast({type:'pen',pts:[P2(q)]});if(!pend.color)pend.color='#ffcc00';}
  else if(mode==='del'){const i=hitDraw(q);if(i>=0){snap();S.draw.splice(i,1);save()}}
  else{ // edit mode or a selected drawing
@@ -340,7 +345,7 @@ cv.addEventListener('pointermove',e=>{if(!B)return;const q=pt(e);if(q.p==null||q
  if(!drag)return;const p=+q.p.toFixed(2);dirty++;
  if(drag.d){const d=drag.d;
   if(drag.k==='body'){const l=LC(q.x);if(l==null)return;const dl=l-drag.l0,dp=q.p-drag.p0,mv=o=>({t:d.type==='hline'?o.t:l2t(t2l(o.t)+dl),p:o.p+dp});if(drag.pos0){if(d.st!=='draft')return;const o=drag.pos0;d.t=l2t(t2l(o.t)+dl);d.t2=l2t(t2l(o.t2)+dl);d.e=+(o.e+dp).toFixed(2);d.sl=+(o.sl+dp).toFixed(2);d.tp=+(o.tp+dp).toFixed(2)}else if(drag.pts0)d.pts=drag.pts0.map(mv);else{d.a=mv(drag.a0);if(drag.b0)d.b=mv(drag.b0);}}
-  else if(d.type==='pos'){if(drag.k==='w')d.t2=Math.max(q.t,d.t+B.tfs*2);else if(drag.k!=='e'||d.st==='draft'){d[drag.k]=+q.p.toFixed(2);if(d.st==='live'&&drag.k!=='e'){const lp=S.ps.find(x=>x.id===d.posId)||S.ps[0];if(lp){lp[drag.k]=d[drag.k];updLines();updPos()}}}}
+  else if(d.type==='pos'){if(drag.k==='w')d.t2=Math.max(q.t,d.t+B.tfs*2);else if(drag.k!=='e'||d.st==='draft'){d[drag.k]=+q.p.toFixed(2);if(d.st==='live'&&drag.k!=='e'){const lp=S.ps.find(x=>x.id===d.posId);if(lp){lp[drag.k]=d[drag.k];updLines();updPos()}}}}
   else if(drag.k==='c')d.off=q.p-lineP(d.a,d.b,q.t);else{const m=mag(q);d[drag.k]={t:d.type==='hline'?d.a.t:m.t,p:m.p};}}
  else if(drag.p){const P=drag.p,dir=P.side==='buy'?1:-1;let k=drag.k;if(k==='new'){if(Math.abs(Y(p)-Y(P.entry))<8)return;k=(p-P.entry)*dir<0?'sl':'tp';drag.k=k}
   if(k==='sl'&&(p-P.entry)*dir>=0)return;if(k==='tp'&&(p-P.entry)*dir<=0)return;P[k]=p;updLines();updPos();}
@@ -399,8 +404,11 @@ function rollbackTo(to){ const cut=ds(to);
  // trades closed after the new cursor -> remove; reopen the latest one if it was opened before the cursor
  const j=journal(),keep=[],gone=[];for(const t of j){const ct=t.closeT!=null?t.closeT:null;((ct!=null?ct>to:t.close>cut)?gone:keep).push(t)}
  if(gone.length){gone.forEach(t=>{S.balance=+(S.balance-t.pnl).toFixed(2)});
-  for(const last of gone){if(last.openT==null||last.openT>to)continue;const ex=S.ps.find(x=>x.id===(last.pid||last.id));if(ex){ex.lots=+(ex.lots+last.lots).toFixed(2);continue}S.ps.push({id:last.pid||last.id,sl0:last.sl0,side:last.side,quick:last.quick,entry:last.entry,sl:last.sl,tp:last.tp,lots:last.lots,open:last.openT,tf:last.tf,why:last.why,feel:last.feeling,conf:last.conf,bal0:last.bal0!=null?last.bal0:S.balance,ctx:last.ctx});}
+  for(const last of gone){if(last.openT==null||last.openT>to)continue;const ex=S.ps.find(x=>x.id===(last.pid||last.id));if(ex){ex.lots=+(ex.lots+last.lots).toFixed(2);continue}S.ps.push({id:last.pid||last.id,sl0:last.sl0,side:last.side,quick:last.quick,tool:last.tool,entry:last.entry,sl:last.sl,tp:last.tp,lots:last.lots,open:last.openT,tf:last.tf,why:last.why,feel:last.feeling,conf:last.conf,bal0:last.bal0!=null?last.bal0:S.balance,ctx:last.ctx});}
   setJournal(keep);renderJournal();}
+ // position-tool boxes follow their trades: reopened -> live again (zone up to cursor), trade gone -> back to a plan (draft)
+ (S.draw||[]).forEach(d=>{if(d.type!=='pos'||d.posId==null)return;const has=S.ps.some(p=>p.id===d.posId);
+  if(d.st==='done'&&has){d.st='live';d.res=null;d.exit=null;if(d.t2live)d.t2=d.t2live}else if((d.st==='live'||d.st==='done')&&!has&&!journal().some(t=>(t.pid||t.id)===d.posId)){d.st='draft';d.posId=null;d.res=null;d.exit=null}});dirty++;
 }
 async function stepBack(auto){if(Q)return;if(!auto){stopPlay();for(let i=0;busy&&i<200;i++)await new Promise(r=>setTimeout(r,50))}if(busy)return;busy=true;try{
  const first=Date.parse(MAN.first)/1000;let T;
@@ -483,7 +491,7 @@ $('bJson').onclick=()=>dl('gold-journal.json',JSON.stringify(journal(),null,1),'
 $('bWipe').onclick=()=>{if(confirm('حذف كل السجل؟')){setJournal([]);renderJournal()}};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const s=await f.text();try{const arr=f.name.endsWith('.csv')?parseCsv(s):JSON.parse(s);
  const j=journal(),ids=new Set(j.map(t=>t.id));arr.forEach(t=>{if(!ids.has(t.id))j.push(t)});setJournal(j);renderJournal();status('تم الاستيراد: '+arr.length)}catch(err){alert('ملف غير صالح')}};
-window.GR={chart,ser,LC:x=>LC(x),render:()=>render(),t2l:t=>t2l(t),l2t:l=>l2t(l),X:t=>X(t),Y:p=>Y(p),coach:()=>coachData(),vis:()=>{const d=ser.data(),l=d[d.length-1],lr=ts.getVisibleLogicalRange(),vr=ts.getVisibleRange();return {n:d.length,lastT:l?l.time-off(B.U[B.n-1]):null,lastC:l?l.close:null,cur:S.cur,curBar:B.U[B.n-1],bucket:B.A.t[B.k],nextB:B.A.t[B.k+1]||null,price:S.price,hdr:$('price').textContent,lr:lr&&[lr.from,lr.to],vrTo:vr&&vr.to,lastTime:l&&l.time}},ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
+window.GR={chart,ser,get MC(){return MC},m1:(a,b)=>m1(a,b),execPos:()=>execPos(),select:i=>select(i),LC:x=>LC(x),render:()=>render(),t2l:t=>t2l(t),l2t:l=>l2t(l),X:t=>X(t),Y:p=>Y(p),coach:()=>coachData(),vis:()=>{const d=ser.data(),l=d[d.length-1],lr=ts.getVisibleLogicalRange(),vr=ts.getVisibleRange();return {n:d.length,lastT:l?l.time-off(B.U[B.n-1]):null,lastC:l?l.close:null,cur:S.cur,curBar:B.U[B.n-1],bucket:B.A.t[B.k],nextB:B.A.t[B.k+1]||null,price:S.price,hdr:$('price').textContent,lr:lr&&[lr.from,lr.to],vrTo:vr&&vr.to,lastTime:l&&l.time}},ema:()=>emaSer?emaSer.map(x=>{const d=x.data().filter(p=>p.value!=null);return {n:d.length,last:d[d.length-1]}}):null,get sty(){return S.sty},macd:()=>MC?{n:mH.data().length,last:mH.data().slice(-1)[0],range:MC.timeScale().getVisibleLogicalRange(),main:chart.timeScale().getVisibleLogicalRange()}:null,get revT(){return revT},get Q(){return Q},startChal,execPos,chal:()=>CH,PS:()=>PS.options(),ptpx(o,r){return {x:r.left+X(o.t),y:r.top+Y(o.p)}},stepBack,cpx(i){const r=cv.getBoundingClientRect();return {x:r.left+XI(i),y:r.top+Y(B.H[i]),h:B.H[i]}},hit:q=>[hitDraw(q),sel>=0&&hitHandle(S.draw[sel],q),JSON.stringify(drag)],get sel(){return sel},select,mid(i){const d=S.draw[i],r=cv.getBoundingClientRect();return {x:r.left+(X(d.a.t)+X(d.b.t))/2,y:r.top+(Y(d.a.p)+Y(d.b.p))/2,bx:r.left+X(d.b.t),by:r.top+Y(d.b.p)}},snapCtx,quiz:()=>LS('gr_quiz')||[],get S(){return S},get B(){return B},stepNext,openPos,closePos,journal};
 init().catch(e=>{console.error(e);status('خطأ في التحميل')});
 // ---------- context snapshot ----------
 function snapCtx(){if(B&&!B.smc)B.smc=computeSMC(B);if(!B||!B.smc||!B.smc.raw)return {tf:S.tf};const sm=B.smc,{I,Sw}=sm.raw,px=S.price,r2=v=>+v.toFixed(2);

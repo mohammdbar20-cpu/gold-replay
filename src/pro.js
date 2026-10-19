@@ -111,7 +111,7 @@ async function jumpTo(T){
    m.onclick=e=>{if(e.target===m){closeModal();res(false)}};$('jpNo').onclick=()=>{closeModal();res(false)};$('jpYes').onclick=()=>{closeModal();res(true)}});
   if(!ok)return status('تم إلغاء الانتقال');}
  busy=true;try{
-  if(to<S.cur)rollbackTo(to);
+  if(to<S.cur)rollbackTo(to);else if(S.ps.length){status('⏳ فحص الوقف/الهدف…');await scanHits(S.cur,to)}
   S.cur=to;mPrev=null;emaPrev=null;await render();
   if(S.ps.length){const px=S.price;for(const p of S.ps.slice())closePos(px,'قفزة تاريخ',to,p);renderJournal()}
   save();updLines();updPos();toLatest();dirty++;
