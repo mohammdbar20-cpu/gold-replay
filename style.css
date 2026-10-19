@@ -208,3 +208,9 @@ body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
 .dpb{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 .dpb button{min-height:44px;padding:0 16px;border-radius:10px;font-size:15px;border:1px solid var(--bd);background:#222;color:#eee}
 .dpb button.pri{background:#9afc41;color:#000;font-weight:700;border-color:#9afc41;flex:1}
+/* header never reflows: status is a toast overlay */
+header{flex-wrap:nowrap;position:relative;min-width:0;overflow:visible}
+header .brand,#clock,#price{white-space:nowrap}
+#clock{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#status{position:absolute;top:100%;inset-inline:8px;z-index:30;margin-top:4px;pointer-events:none;text-align:center;background:rgba(20,20,24,.92);border:1px solid #fc04;border-radius:8px;padding:4px 8px;line-height:1.35}
+#status:empty{display:none}
