@@ -36,16 +36,25 @@ function dec(txt) {
   return { t: T, o: O, h: H, l: Lo, c: C, n };
 }
 const LRU = [];
+async function fetchRetry(u, n = 4) {
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(u);
+      if (r.ok) return await r.text();
+      if (r.status === 404 || i >= n - 1) throw Error(u.replace("data/", "") + " " + r.status);
+    } catch (e) {
+      if (i >= n - 1) throw e;
+    }
+    await new Promise((q) => setTimeout(q, 400 * (i + 1)));
+  }
+}
 async function load(path) {
   if (!cache[path]) {
     LRU.push(path);
     while (LRU.length > 10) {
       delete cache[LRU.shift()];
     }
-    cache[path] = fetch("data/" + path).then((r) => {
-      if (!r.ok) throw Error(path);
-      return r.text();
-    }).then(dec);
+    cache[path] = fetchRetry("data/" + path).then(dec);
     cache[path].catch(() => {
       delete cache[path];
     });
@@ -485,10 +494,11 @@ function closePos(px, reason, t, p, frac) {
   renderJournal();
 }
 function closeAll() {
-  S.ps.slice().forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
+  S.ps.filter((p) => !p.quick).forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
 }
 const fpl = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) * OZ * p.lots - openCost(p), fpips = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) / PIP;
 const durTxt = (m) => m >= 1440 ? (m / 1440).toFixed(1) + " \u064A\u0648\u0645" : m >= 60 ? (m / 60).toFixed(1) + " \u0633\u0627\u0639\u0629" : m + " \u062F\u0642\u064A\u0642\u0629";
+const mgmtBtns = (p) => '<span class="pmg"><button class="pbe" data-id="' + p.id + '" title="\u0646\u0642\u0644 \u0627\u0644\u0648\u0642\u0641 \u0644\u0644\u062F\u062E\u0648\u0644" ' + (p.sl == null || p.be ? "disabled" : "") + '>BE</button><button class="phalf" data-id="' + p.id + '" title="\u0625\u063A\u0644\u0627\u0642 \u062C\u0632\u0626\u064A 50%" ' + (p.lots < 0.02 ? "disabled" : "") + '>\xBD</button><button class="ptrail' + (p.trail ? " on" : "") + '" data-id="' + p.id + '" title="\u0648\u0642\u0641 \u0645\u062A\u062D\u0631\u0643" ' + (p.sl == null ? "disabled" : "") + ">\u21E2</button></span>";
 function updPos() {
   const open = S.ps.reduce((a, p) => a + fpl(p), 0), eq = S.balance + open;
   $("bal").textContent = S.balance.toFixed(2);
@@ -498,8 +508,8 @@ function updPos() {
   } else {
     $("pos").innerHTML = '<div class="plist">' + S.ps.map((p) => {
       const pl = fpl(p);
-      return '<div class="pitem"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + "</span> " + p.lots + " @ " + p.entry.toFixed(2) + (p.sl != null ? " | SL " + p.sl : "") + (p.tp != null ? " | TP " + p.tp : "") + ' <b class="' + (pl >= 0 ? "w" : "l") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$ (" + fpips(p).toFixed(0) + 'p)</b><span class="pmg"><button class="pbe" data-id="' + p.id + '" title="\u0646\u0642\u0644 \u0627\u0644\u0648\u0642\u0641 \u0644\u0644\u062F\u062E\u0648\u0644" ' + (p.sl == null || p.be ? "disabled" : "") + '>BE</button><button class="phalf" data-id="' + p.id + '" title="\u0625\u063A\u0644\u0627\u0642 \u062C\u0632\u0626\u064A 50%" ' + (p.lots < 0.02 ? "disabled" : "") + '>\xBD</button><button class="ptrail' + (p.trail ? " on" : "") + '" data-id="' + p.id + '" title="\u0648\u0642\u0641 \u0645\u062A\u062D\u0631\u0643" ' + (p.sl == null ? "disabled" : "") + '>\u21E2</button></span><button class="pclose" data-id="' + p.id + '">\u2715 \u0625\u063A\u0644\u0627\u0642</button></div>';
-    }).join("") + "</div>" + (S.ps.length > 1 ? '<button id="bCloseAll">\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644</button>' : "");
+      return '<div class="pitem' + (p.quick ? " pq" : "") + '"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + "</span> " + p.lots + " @ " + p.entry.toFixed(2) + (p.sl != null ? " | SL " + p.sl : "") + (p.tp != null ? " | TP " + p.tp : "") + ' <b class="' + (pl >= 0 ? "w" : "l") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$ (" + fpips(p).toFixed(0) + "p)</b>" + (p.quick ? '<span class="small qhint">\u26A1 \u0627\u0644\u0625\u063A\u0644\u0627\u0642 \u0628\u062C\u0627\u0646\u0628 \u0634\u0631\u0627\u0621/\u0628\u064A\u0639</span>' : mgmtBtns(p) + '<button class="pclose" data-id="' + p.id + '">\u2715 \u0625\u063A\u0644\u0627\u0642</button>') + "</div>";
+    }).join("") + "</div>" + (S.ps.filter((x) => !x.quick).length > 1 ? '<button id="bCloseAll">\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644</button>' : "");
     document.querySelectorAll(".pclose").forEach((b) => b.onclick = () => {
       const p = S.ps.find((x) => String(x.id) === b.dataset.id);
       if (p) closePos(S.price, "\u064A\u062F\u0648\u064A", null, p);
@@ -508,6 +518,7 @@ function updPos() {
     if (ca) ca.onclick = closeAll;
     mgmtBind();
   }
+  qUI();
   updRisk();
 }
 function updRisk() {
@@ -2529,6 +2540,10 @@ async function jumpTo(T) {
         msg = "\u0628\u0639\u062F \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0622\u062E\u0631 \u064A\u0648\u0645 \u0645\u062A\u0627\u062D";
       } else if (!msg && berlinParts(to).d !== berlinParts(T).d && to - T > 3 * 3600) msg = "\u0639\u0637\u0644\u0629/\u0646\u0647\u0627\u064A\u0629 \u0623\u0633\u0628\u0648\u0639 \u2014 \u062A\u0645 \u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644 \u0625\u0644\u0649 \u0623\u0648\u0644 \u064A\u0648\u0645 \u062A\u062F\u0627\u0648\u0644 \u0628\u0639\u062F\u0647\u0627";
     }
+  } catch (e) {
+    console.warn(e);
+    busy = false;
+    return status("\u062E\u0637\u0623 \u0641\u064A \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u2014 \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649");
   } finally {
     busy = false;
   }
@@ -2581,6 +2596,66 @@ async function jumpTo(T) {
 $("bDate").onclick = openDatePicker;
 window.GR.jumpTo = (t) => jumpTo(t);
 window.GR.berlinToUtc = berlinToUtc;
+const qPos = () => S.ps.filter((p) => p.quick);
+const qLatest = () => qPos().reduce((a, p) => !a || p.open > a.open || p.open === a.open && p.id > a.id ? p : a, null);
+let qPopOpen = false;
+function qUI() {
+  const q = qPos(), w = $("qCW");
+  if (!w) return;
+  const on = q.length > 0;
+  w.classList.toggle("hidden", !on);
+  $("quick").classList.toggle("hasq", on);
+  if (!on) {
+    qPopOpen = false;
+    $("qPop").classList.add("hidden");
+    $("qPop")._h = "";
+    return;
+  }
+  const pl = q.reduce((a, p) => a + fpl(p), 0), L = qLatest(), lpl = fpl(L);
+  $("qPL").textContent = (lpl >= 0 ? "+" : "") + lpl.toFixed(2) + "$";
+  $("qPL").className = lpl >= 0 ? "w" : "l";
+  $("qMore").textContent = (q.length > 1 ? q.length + " " : "") + (qPopOpen ? "\u25B4" : "\u25BE");
+  $("qMore").setAttribute("aria-expanded", String(qPopOpen));
+  const P = $("qPop");
+  P.classList.toggle("hidden", !qPopOpen);
+  if (!qPopOpen) P._h = "";
+  if (qPopOpen) {
+    const H = q.slice().sort((a2, b) => b.open - a2.open || b.id - a2.id).map((p) => {
+      const v = fpl(p);
+      return '<div class="qrow"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u25B2 \u0634\u0631\u0627\u0621" : "\u25BC \u0628\u064A\u0639") + '</span> <span dir="ltr">' + p.lots + " @ " + p.entry.toFixed(2) + '</span> <b class="' + (v >= 0 ? "w" : "l") + '" dir="ltr">' + (v >= 0 ? "+" : "") + v.toFixed(2) + "$</b>" + mgmtBtns(p) + '<button class="qx" data-id="' + p.id + '" title="\u0625\u063A\u0644\u0627\u0642">\u2716</button></div>';
+    }).join("") + '<div class="qfoot"><span class="small">BE / \xBD / \u21E2 \u062A\u062D\u062A\u0627\u062C \u0648\u0642\u0641 \u062E\u0633\u0627\u0631\u0629 (\u0627\u0633\u062D\u0628 \u062E\u0637 \u0627\u0644\u062F\u062E\u0648\u0644)</span>' + (q.length > 1 ? '<button id="qAll">\u2716 \u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644 (' + q.length + ")</button>" : "") + "</div>";
+    if (P._h === H) return;
+    P._h = H;
+    P.innerHTML = H;
+    P.querySelectorAll(".qx").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const p = S.ps.find((x) => String(x.id) === b.dataset.id);
+      if (p) closePos(S.price, "\u064A\u062F\u0648\u064A", null, p);
+    });
+    const a = $("qAll");
+    if (a) a.onclick = (e) => {
+      e.stopPropagation();
+      qPos().forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
+    };
+    mgmtBind();
+  }
+}
+$("qClose").onclick = () => {
+  const p = qLatest();
+  if (p) closePos(S.price, "\u064A\u062F\u0648\u064A", null, p);
+};
+$("qMore").onclick = (e) => {
+  e.stopPropagation();
+  qPopOpen = !qPopOpen;
+  qUI();
+};
+document.addEventListener("click", (e) => {
+  const pa = e.composedPath ? e.composedPath() : [e.target];
+  if (qPopOpen && !pa.includes($("qPop")) && !pa.includes($("qMore"))) {
+    qPopOpen = false;
+    qUI();
+  }
+});
 let CRS = null, CP = null, CMAIN = null, CITEM = null, CSTATE = null;
 const L_ = () => window.I18N && I18N.de() ? "de" : "ar";
 const TX = (o) => o == null ? "" : typeof o === "string" ? o : o[L_()] || o.ar || "";

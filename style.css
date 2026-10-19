@@ -214,3 +214,23 @@ header .brand,#clock,#price{white-space:nowrap}
 #clock{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #status{position:absolute;top:100%;inset-inline:8px;z-index:30;margin-top:4px;pointer-events:none;text-align:center;background:rgba(20,20,24,.92);border:1px solid #fc04;border-radius:8px;padding:4px 8px;line-height:1.35}
 #status:empty{display:none}
+/* quick close next to buy/sell */
+#quick{position:relative}
+#quick.hasq{grid-template-columns:1fr auto 1fr auto}
+#qCW{display:flex;gap:3px;align-items:stretch}#qCW.hidden{display:none!important}
+#qClose{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;min-width:78px;padding:2px 8px;border-radius:16px 6px 6px 16px;background:#2a2e39;border:1px solid #fc0;color:#fc0;font-weight:800;font-size:13px;line-height:1.15}
+#qClose b{font-size:13px;direction:ltr;unicode-bidi:isolate}#qClose b.w{color:#9afc41}#qClose b.l{color:#ff5252}
+#qMore{min-width:30px;min-height:52px;padding:0 4px;border-radius:6px 16px 16px 6px;background:#2a2e39;border:1px solid #555;color:#ddd;font-size:13px}
+#qPop{position:absolute;bottom:100%;left:6px;right:6px;margin-bottom:6px;z-index:40;background:#14161c;border:1px solid #444;border-radius:12px;padding:6px;box-shadow:0 -6px 24px #000a;max-height:46vh;overflow:auto;direction:var(--d)}
+#qPop .qrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid #222;font-size:13px}
+#qPop .qrow .pmg{margin-inline-start:auto}#qPop .qrow button{min-width:38px;min-height:36px;border-radius:8px}
+#qPop .qx{background:#3a1d1d;border:1px solid #f23645;color:#ff6b6b;font-weight:800}
+#qPop .qfoot{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:6px}#qPop #qAll{min-height:38px;border-radius:10px;background:#3a1d1d;border:1px solid #f23645;color:#ff6b6b;font-weight:700;padding:0 10px}
+.pitem.pq .qhint{margin-inline-start:6px}
+@media (min-width:900px){#qClose,#qMore{min-height:40px}}
+#quick.hasq{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto}
+#quick.hasq .big{font-size:16px;padding:0 6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#quick.hasq #qLot{min-width:0;padding:0 4px}
+#qClose span{white-space:nowrap}
+html[lang=de] #qClose{font-size:12px;min-width:74px;padding:2px 5px}
+html[lang=de] #quick.hasq .big{font-size:14px;padding:0 3px;letter-spacing:-.2px}

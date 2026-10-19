@@ -105,7 +105,7 @@ async function jumpTo(T){
   if(T>last){to=last;msg='بعد نهاية البيانات — تم الانتقال إلى آخر يوم متاح'}
   else{to=await firstM1From(T,12);if(to==null){to=await lastM1Before(last+60);msg='بعد نهاية البيانات — تم الانتقال إلى آخر يوم متاح'}
    else if(!msg&&berlinParts(to).d!==berlinParts(T).d&&to-T>3*3600)msg='عطلة/نهاية أسبوع — تم الانتقال إلى أول يوم تداول بعدها'}
- }finally{busy=false}
+ }catch(e){console.warn(e);busy=false;return status('خطأ في تحميل البيانات — حاول مرة أخرى')}finally{busy=false}
  if(to==null)return status('لا توجد بيانات');
  if(to>S.cur&&S.ps.length){const ok=await new Promise(res=>{const m=openModal(`<h3>⚠️ صفقات مفتوحة</h3><p>لديك صفقات مفتوحة (${S.ps.length}). إغلاقها بسعر القفزة؟</p><div class="dpb"><button id="jpNo">إلغاء</button><button id="jpYes" class="pri">✔ إغلاق والانتقال</button></div>`,'dp');
    m.onclick=e=>{if(e.target===m){closeModal();res(false)}};$('jpNo').onclick=()=>{closeModal();res(false)};$('jpYes').onclick=()=>{closeModal();res(true)}});
@@ -119,3 +119,21 @@ async function jumpTo(T){
  }catch(e){console.error(e);status('خطأ: '+e.message)}finally{busy=false}}
 $('bDate').onclick=openDatePicker;
 window.GR.jumpTo=t=>jumpTo(t);window.GR.berlinToUtc=berlinToUtc;
+
+// ---------- quick-trade close (next to Buy/Sell) ----------
+const qPos=()=>S.ps.filter(p=>p.quick);
+const qLatest=()=>qPos().reduce((a,p)=>!a||p.open>a.open||(p.open===a.open&&p.id>a.id)?p:a,null);
+let qPopOpen=false;
+function qUI(){const q=qPos(),w=$('qCW');if(!w)return;const on=q.length>0;w.classList.toggle('hidden',!on);$('quick').classList.toggle('hasq',on);
+ if(!on){qPopOpen=false;$('qPop').classList.add('hidden');$('qPop')._h='';return}
+ const pl=q.reduce((a,p)=>a+fpl(p),0),L=qLatest(),lpl=fpl(L);
+ $('qPL').textContent=(lpl>=0?'+':'')+lpl.toFixed(2)+'$';$('qPL').className=lpl>=0?'w':'l';
+ $('qMore').textContent=(q.length>1?q.length+' ':'')+(qPopOpen?'▴':'▾');$('qMore').setAttribute('aria-expanded',String(qPopOpen));
+ const P=$('qPop');P.classList.toggle('hidden',!qPopOpen);if(!qPopOpen)P._h='';
+ if(qPopOpen){const H=q.slice().sort((a,b)=>b.open-a.open||b.id-a.id).map(p=>{const v=fpl(p);return '<div class="qrow"><span class="'+(p.side==='buy'?'w':'l')+'">'+(p.side==='buy'?'▲ شراء':'▼ بيع')+'</span> <span dir="ltr">'+p.lots+' @ '+p.entry.toFixed(2)+'</span> <b class="'+(v>=0?'w':'l')+'" dir="ltr">'+(v>=0?'+':'')+v.toFixed(2)+'$</b>'+mgmtBtns(p)+'<button class="qx" data-id="'+p.id+'" title="إغلاق">✖</button></div>'}).join('')+
+  '<div class="qfoot"><span class="small">BE / ½ / ⇢ تحتاج وقف خسارة (اسحب خط الدخول)</span>'+(q.length>1?'<button id="qAll">✖ إغلاق الكل ('+q.length+')</button>':'')+'</div>';if(P._h===H)return;P._h=H;P.innerHTML=H;
+  P.querySelectorAll('.qx').forEach(b=>b.onclick=e=>{e.stopPropagation();const p=S.ps.find(x=>String(x.id)===b.dataset.id);if(p)closePos(S.price,'يدوي',null,p)});
+  const a=$('qAll');if(a)a.onclick=e=>{e.stopPropagation();qPos().forEach(p=>closePos(S.price,'يدوي',null,p))};mgmtBind();}}
+$('qClose').onclick=()=>{const p=qLatest();if(p)closePos(S.price,'يدوي',null,p)};
+$('qMore').onclick=e=>{e.stopPropagation();qPopOpen=!qPopOpen;qUI()};
+document.addEventListener('click',e=>{const pa=e.composedPath?e.composedPath():[e.target];if(qPopOpen&&!pa.includes($('qPop'))&&!pa.includes($('qMore'))){qPopOpen=false;qUI()}});

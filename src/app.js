@@ -18,7 +18,9 @@ function dec(txt){const L=txt.split('\n');let n=L.length-1;if(L[n]==='')n--;
  for(let i=0;i<n;i++){const r=L[i+1].split(',');t+=+r[0];const o=pc+ +r[1];T[i]=t*60;O[i]=o/100;H[i]=(o+ +r[2])/100;Lo[i]=(o-r[3])/100;const c=o+ +r[4];C[i]=c/100;pc=c;}
  return {t:T,o:O,h:H,l:Lo,c:C,n};}
 const LRU=[];
-async function load(path){if(!cache[path]){LRU.push(path);while(LRU.length>10){delete cache[LRU.shift()]}cache[path]=fetch('data/'+path).then(r=>{if(!r.ok)throw Error(path);return r.text()}).then(dec);cache[path].catch(()=>{delete cache[path]})}return cache[path];}
+// network hiccups on mobile: retry with backoff before giving up
+async function fetchRetry(u,n=4){for(let i=0;;i++){try{const r=await fetch(u);if(r.ok)return await r.text();if(r.status===404||i>=n-1)throw Error(u.replace('data/','')+' '+r.status)}catch(e){if(i>=n-1)throw e}await new Promise(q=>setTimeout(q,400*(i+1)))}}
+async function load(path){if(!cache[path]){LRU.push(path);while(LRU.length>10){delete cache[LRU.shift()]}cache[path]=fetchRetry('data/'+path).then(dec);cache[path].catch(()=>{delete cache[path]})}return cache[path];}
 function cat(arr){arr=arr.filter(Boolean);const n=arr.reduce((a,b)=>a+b.n,0),R={n};
  for(const k of 'tohlc'){R[k]=new Float64Array(n);let p=0;for(const a of arr){R[k].set(a[k],p);p+=a.n}}return R;}
 const ym=t=>{const d=new Date(t*1000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')};
@@ -134,16 +136,17 @@ function closePos(px,reason,t,p,frac){stopPlay();p=p||S.ps[0];if(!p)return;const
  const j=journal();j.push(tr);setJournal(j);S.balance=+(S.balance+pnl).toFixed(2);if(part){p.lots=+(p.lots-cl).toFixed(2);p.partials=(p.partials||0)+1}else S.ps=S.ps.filter(x=>x!==p);save();
  status((reason==='TP'?'✅ ':reason==='SL'?'❌ ':'')+'أغلقت الصفقة: '+pnl+'$');if(!S.ps.length){$('why').value='';setFeel(null)}
  updLines();updPos();renderJournal();}
-function closeAll(){S.ps.slice().forEach(p=>closePos(S.price,'يدوي',null,p))}
+function closeAll(){S.ps.filter(p=>!p.quick).forEach(p=>closePos(S.price,'يدوي',null,p))}
 const fpl=p=>(S.price-p.entry)*(p.side==='buy'?1:-1)*OZ*p.lots-openCost(p), fpips=p=>(S.price-p.entry)*(p.side==='buy'?1:-1)/PIP;
 const durTxt=m=>m>=1440?(m/1440).toFixed(1)+' يوم':m>=60?(m/60).toFixed(1)+' ساعة':m+' دقيقة';
+const mgmtBtns=p=>'<span class="pmg"><button class="pbe" data-id="'+p.id+'" title="نقل الوقف للدخول" '+(p.sl==null||p.be?'disabled':'')+'>BE</button><button class="phalf" data-id="'+p.id+'" title="إغلاق جزئي 50%" '+(p.lots<0.02?'disabled':'')+'>½</button><button class="ptrail'+(p.trail?' on':'')+'" data-id="'+p.id+'" title="وقف متحرك" '+(p.sl==null?'disabled':'')+'>⇢</button></span>';
 function updPos(){const open=S.ps.reduce((a,p)=>a+fpl(p),0),eq=S.balance+open;$('bal').textContent=S.balance.toFixed(2);
  $('acct').innerHTML='الرصيد <b>'+S.balance.toFixed(2)+'$</b> · الأسهم <b class="'+(open>=0?'w':'l')+'">'+eq.toFixed(2)+'$</b> · عائم <b class="'+(open>=0?'w':'l')+'">'+(open>=0?'+':'')+open.toFixed(2)+'$</b>';
  if(!S.ps.length){$('pos').textContent='لا توجد صفقة مفتوحة';}
- else{$('pos').innerHTML='<div class="plist">'+S.ps.map(p=>{const pl=fpl(p);return '<div class="pitem"><span class="'+(p.side==='buy'?'w':'l')+'">'+(p.side==='buy'?'شراء':'بيع')+'</span> '+p.lots+' @ '+p.entry.toFixed(2)+(p.sl!=null?' | SL '+p.sl:'')+(p.tp!=null?' | TP '+p.tp:'')+' <b class="'+(pl>=0?'w':'l')+'">'+(pl>=0?'+':'')+pl.toFixed(2)+'$ ('+fpips(p).toFixed(0)+'p)</b><span class="pmg"><button class="pbe" data-id="'+p.id+'" title="نقل الوقف للدخول" '+(p.sl==null||p.be?'disabled':'')+'>BE</button><button class="phalf" data-id="'+p.id+'" title="إغلاق جزئي 50%" '+(p.lots<0.02?'disabled':'')+'>½</button><button class="ptrail'+(p.trail?' on':'')+'" data-id="'+p.id+'" title="وقف متحرك" '+(p.sl==null?'disabled':'')+'>⇢</button></span><button class="pclose" data-id="'+p.id+'">✕ إغلاق</button></div>'}).join('')+'</div>'+(S.ps.length>1?'<button id="bCloseAll">إغلاق الكل</button>':'');
+ else{$('pos').innerHTML='<div class="plist">'+S.ps.map(p=>{const pl=fpl(p);return '<div class="pitem'+(p.quick?' pq':'')+'"><span class="'+(p.side==='buy'?'w':'l')+'">'+(p.side==='buy'?'شراء':'بيع')+'</span> '+p.lots+' @ '+p.entry.toFixed(2)+(p.sl!=null?' | SL '+p.sl:'')+(p.tp!=null?' | TP '+p.tp:'')+' <b class="'+(pl>=0?'w':'l')+'">'+(pl>=0?'+':'')+pl.toFixed(2)+'$ ('+fpips(p).toFixed(0)+'p)</b>'+(p.quick?'<span class="small qhint">⚡ الإغلاق بجانب شراء/بيع</span>':mgmtBtns(p)+'<button class="pclose" data-id="'+p.id+'">✕ إغلاق</button>')+'</div>'}).join('')+'</div>'+(S.ps.filter(x=>!x.quick).length>1?'<button id="bCloseAll">إغلاق الكل</button>':'');
   document.querySelectorAll('.pclose').forEach(b=>b.onclick=()=>{const p=S.ps.find(x=>String(x.id)===b.dataset.id);if(p)closePos(S.price,'يدوي',null,p)});
   const ca=$('bCloseAll');if(ca)ca.onclick=closeAll;mgmtBind();}
- updRisk();}
+ qUI();updRisk();}
 function updRisk(){const p=S.pos,e=p?p.entry:S.price,sl=p?p.sl:num('sl'),lots=p?p.lots:num('lots'),tp=p?p.tp:num('tp');
  if(sl==null||!lots){$('risk').textContent='المخاطرة: —';return}
  const r=Math.abs(e-sl)*OZ*lots;let s='المخاطرة: '+r.toFixed(2)+'$ ('+(r/S.balance*100).toFixed(2)+'%)';
