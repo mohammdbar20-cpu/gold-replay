@@ -171,3 +171,29 @@ body.course #chartWrap{height:calc(100vh - 46vh - 60px)!important}
 .cs-boss{text-align:center;padding:10px}.cs-big{font-size:54px}
 @media (min-width:900px){#cSheet{left:auto;top:52px;width:400px;max-height:none;border-radius:0;border-top:0;border-inline-start:2px solid #6d28d9}body.course #chartWrap{height:calc(100vh - 70px)!important;margin-inline-end:400px}body.course #app{grid-template-areas:"top top top" "chart chart chart" "macd macd macd" "ctrl ctrl ctrl"}}
 @media (max-width:899px){#tfRow{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}#tfRow::-webkit-scrollbar{display:none}#tfRow>*{flex-shrink:0}.cc-t{display:none}#tfRow .chip{padding-left:9px;padding-right:9px}}
+/* ===== v26: costs, management, edge stats, simulator, templates, course additions ===== */
+.pmg{display:inline-flex;gap:3px;margin-inline-start:4px}.pmg button{min-width:32px;min-height:30px;padding:0 6px;font-size:12px;border-radius:8px}.pmg button.on{background:#2563eb;color:#fff}.pmg button:disabled{opacity:.35}
+.pitem{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+#costBox summary{cursor:pointer;font-size:13px;padding:4px 0}#costBox .row{flex-wrap:wrap;gap:6px}
+.egrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:6px;margin:6px 0}.egrid>div{background:#111018;border:1px solid var(--bd,#2a2a33);border-radius:10px;padding:6px 8px}.egrid small{display:block;color:var(--mu,#999);font-size:11px}.egrid b{font-size:15px}
+.meter{margin:6px 0}.mbar{position:relative;height:8px;background:#2a2340;border-radius:5px;overflow:visible}.mbar i{display:block;height:100%;background:linear-gradient(90deg,#f59e0b,#22c55e);border-radius:5px}.mbar span{position:absolute;top:-3px;width:2px;height:14px;background:#fff8}.mlab{display:flex;justify-content:space-between;direction:ltr}
+.warn{background:#3a2a06;border:1px solid #a16207;color:#fde68a;border-radius:10px;padding:6px 8px;font-size:12.5px;margin:4px 0}.warn.soft{background:#262014;border-color:#6b5310}
+.info{background:#0c2236;border:1px solid #1d4ed8;color:#bfdbfe;border-radius:10px;padding:6px 8px;font-size:12.5px;margin:4px 0}
+#modal{position:fixed;inset:0;z-index:90;background:#000a;display:flex;align-items:flex-end;justify-content:center;direction:var(--d)}
+#modal .mbox{background:#0e0c18;color:#eee;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;border-top:2px solid #6d28d9;padding:12px 14px 18px}
+@media (min-width:900px){#modal{align-items:center}#modal .mbox{border-radius:18px;border:1px solid #3b3260}}
+.mh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.mx{min-width:38px;min-height:38px;border-radius:10px}
+.rs{display:grid;grid-template-columns:1fr 1.6fr 70px;align-items:center;gap:8px;margin:5px 0;font-size:13px}.rs input[type=number]{width:70px;min-height:36px}.rs input[type=range]{width:100%}
+#rsC{width:100%;height:200px;border-radius:10px;margin:8px 0;display:block}
+.tpf label{display:flex;flex-direction:column;gap:3px;margin:6px 0;font-size:13px}.tpf input,.tpf select{min-height:42px;font-size:15px;background:#1c1830;color:#fff;border:1px solid #3b3260;border-radius:10px;padding:0 8px}.tpf label select+select{margin-top:4px}
+.tps{display:flex;gap:6px;margin-bottom:6px}.tps button{flex:1;min-height:40px;border-radius:10px}.tps button.on{background:#6d28d9;color:#fff}
+.tpl-item{font-size:12px;border-bottom:1px solid #222;padding:4px 0}
+.mtab{width:100%;border-collapse:collapse;font-size:13px}.mtab td,.mtab th{padding:6px;border-bottom:1px solid #2a2340;text-align:center}
+#cSheet.cs-full{top:0;max-height:none;border-radius:0}
+@media (min-width:900px){#cSheet.cs-full{left:0;width:auto;top:52px}}
+.cs-scn{background:#3b0d12;border:1px solid #b91c1c;color:#fecaca;border-radius:10px;padding:6px 8px;font-weight:700;margin-bottom:6px}
+.cs-skip{width:100%;min-height:44px;margin-top:8px;border-radius:14px;background:#1c1830;color:#ddd;border:1px solid #3b3260;font-weight:700}
+.ser-bar{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;background:#151226;border-radius:10px;padding:6px 8px;margin:4px 0}
+#csTimer{font-weight:800;color:#fca5a5}
+.egrid b,.ser-bar b,.cs-res,.pitem b{unicode-bidi:plaintext}.egrid b{display:inline-block;direction:ltr}
+.mbar{direction:ltr}

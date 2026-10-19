@@ -346,12 +346,15 @@ async function advance(to) {
     status("\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A");
     return false;
   }
-  if (S.ps.some((p) => p.sl != null || p.tp != null)) {
+  if (S.ps.some((p) => p.sl != null || p.tp != null || p.trail)) {
     const M = await m1(S.cur + 60, to);
     for (let i = 0; i < M.n && S.ps.length; i++) {
       const t = M.t[i];
       if (t <= S.cur || t > to) continue;
-      for (const p of S.ps.slice()) checkHit(M, i, p);
+      for (const p of S.ps.slice()) {
+        trailUpd(M, i, p);
+        checkHit(M, i, p);
+      }
     }
   }
   S.cur = to;
@@ -425,32 +428,37 @@ function openPos(side, quick) {
   const e = S.price, sl = quick ? null : num("sl"), tp = quick ? null : num("tp"), d = side === "buy" ? 1 : -1;
   if (sl != null && (sl - e) * d >= 0) return alert("\u0648\u0642\u0641 \u0627\u0644\u062E\u0633\u0627\u0631\u0629 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
   if (tp != null && (tp - e) * d <= 0) return alert("\u0627\u0644\u0647\u062F\u0641 \u0641\u064A \u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u062E\u0637\u0623");
-  const p = { id: Date.now() + Math.floor(Math.random() * 1e3), side, entry: e, sl, tp, lots, open: S.cur, tf: S.tf, why: quick ? "" : $("why").value, feel: $("feel").value, conf: FEEL, bal0: S.balance, quick: !!quick, ctx: Object.assign(snapCtx(), { confidence: FEEL }) };
+  const p = { id: Date.now() + Math.floor(Math.random() * 1e3), side, entry: e, sl, sl0: sl, tp, lots, open: S.cur, tf: S.tf, why: quick ? "" : $("why").value, feel: $("feel").value, conf: FEEL, bal0: S.balance, quick: !!quick, ctx: Object.assign(snapCtx(), { confidence: FEEL }) };
   S.ps.push(p);
   save();
   updLines();
   updPos();
   return p;
 }
-function closePos(px, reason, t, p) {
+function closePos(px, reason, t, p, frac) {
   stopPlay();
   p = p || S.ps[0];
   if (!p) return;
   const tc = t || S.cur;
-  if (S.draw) S.draw.forEach((d2) => {
+  const part = frac && frac < 1 && p.lots >= 0.02;
+  const cl = part ? Math.max(0.01, Math.round(p.lots * frac * 100) / 100) : p.lots;
+  if (S.draw && !part) S.draw.forEach((d2) => {
     if (d2.type === "pos" && d2.st === "live" && (d2.posId == null || d2.posId === p.id)) {
       d2.st = "done";
       d2.res = reason;
       d2.t2 = Math.max(d2.t2, tc);
     }
   });
-  const d = p.side === "buy" ? 1 : -1, pnl = +((px - p.entry) * d * OZ * p.lots).toFixed(2), risk = p.sl != null ? Math.abs(p.entry - p.sl) * OZ * p.lots : null;
-  const tr2 = { id: Date.now() + Math.floor(Math.random() * 1e3), openT: p.open, closeT: tc, bal0: p.bal0, open: ds(p.open), close: ds(tc), dur: Math.round((tc - p.open) / 60), tf: p.tf, side: p.side, lots: p.lots, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, pnl, R: risk ? +(pnl / risk).toFixed(2) : null, why: p.why, feeling: p.feel || "", conf: p.conf || null, quick: !!p.quick, ctx: p.ctx };
+  const d = p.side === "buy" ? 1 : -1, gross = +((px - p.entry) * d * OZ * cl).toFixed(2), cst = tradeCost(p, tc, cl), pnl = +(gross - cst.total).toFixed(2), sl0 = p.sl0 != null ? p.sl0 : p.sl, risk = sl0 != null && Math.abs(p.entry - sl0) > 0 ? Math.abs(p.entry - sl0) * OZ * cl : null, riskD = risk || (p.bal0 || S.balance) * (S.riskPct || 1) / 100 * cl / p.lots;
+  const tr2 = { id: Date.now() + Math.floor(Math.random() * 1e3), openT: p.open, closeT: tc, bal0: p.bal0, open: ds(p.open), close: ds(tc), dur: Math.round((tc - p.open) / 60), tf: p.tf, side: p.side, pid: p.id, lots: cl, partial: part || void 0, sl0, be: p.be || void 0, trail: p.trail ? true : void 0, entry: p.entry, sl: p.sl, tp: p.tp, exit: +px.toFixed(2), reason, gross, cost: cst.total, costs: cst, pnl, R: +(pnl / riskD).toFixed(2), Rg: +(gross / riskD).toFixed(2), Rest: risk ? void 0 : true, why: p.why, feeling: p.feel || "", conf: p.conf || null, quick: !!p.quick, ctx: p.ctx };
   const j = journal();
   j.push(tr2);
   setJournal(j);
   S.balance = +(S.balance + pnl).toFixed(2);
-  S.ps = S.ps.filter((x) => x !== p);
+  if (part) {
+    p.lots = +(p.lots - cl).toFixed(2);
+    p.partials = (p.partials || 0) + 1;
+  } else S.ps = S.ps.filter((x) => x !== p);
   save();
   status((reason === "TP" ? "\u2705 " : reason === "SL" ? "\u274C " : "") + "\u0623\u063A\u0644\u0642\u062A \u0627\u0644\u0635\u0641\u0642\u0629: " + pnl + "$");
   if (!S.ps.length) {
@@ -464,7 +472,7 @@ function closePos(px, reason, t, p) {
 function closeAll() {
   S.ps.slice().forEach((p) => closePos(S.price, "\u064A\u062F\u0648\u064A", null, p));
 }
-const fpl = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) * OZ * p.lots, fpips = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) / PIP;
+const fpl = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) * OZ * p.lots - openCost(p), fpips = (p) => (S.price - p.entry) * (p.side === "buy" ? 1 : -1) / PIP;
 const durTxt = (m) => m >= 1440 ? (m / 1440).toFixed(1) + " \u064A\u0648\u0645" : m >= 60 ? (m / 60).toFixed(1) + " \u0633\u0627\u0639\u0629" : m + " \u062F\u0642\u064A\u0642\u0629";
 function updPos() {
   const open = S.ps.reduce((a, p) => a + fpl(p), 0), eq = S.balance + open;
@@ -475,7 +483,7 @@ function updPos() {
   } else {
     $("pos").innerHTML = '<div class="plist">' + S.ps.map((p) => {
       const pl = fpl(p);
-      return '<div class="pitem"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + "</span> " + p.lots + " @ " + p.entry.toFixed(2) + (p.sl != null ? " | SL " + p.sl : "") + (p.tp != null ? " | TP " + p.tp : "") + ' <b class="' + (pl >= 0 ? "w" : "l") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$ (" + fpips(p).toFixed(0) + 'p)</b><button class="pclose" data-id="' + p.id + '">\u2715 \u0625\u063A\u0644\u0627\u0642</button></div>';
+      return '<div class="pitem"><span class="' + (p.side === "buy" ? "w" : "l") + '">' + (p.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639") + "</span> " + p.lots + " @ " + p.entry.toFixed(2) + (p.sl != null ? " | SL " + p.sl : "") + (p.tp != null ? " | TP " + p.tp : "") + ' <b class="' + (pl >= 0 ? "w" : "l") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + "$ (" + fpips(p).toFixed(0) + 'p)</b><span class="pmg"><button class="pbe" data-id="' + p.id + '" title="\u0646\u0642\u0644 \u0627\u0644\u0648\u0642\u0641 \u0644\u0644\u062F\u062E\u0648\u0644" ' + (p.sl == null || p.be ? "disabled" : "") + '>BE</button><button class="phalf" data-id="' + p.id + '" title="\u0625\u063A\u0644\u0627\u0642 \u062C\u0632\u0626\u064A 50%" ' + (p.lots < 0.02 ? "disabled" : "") + '>\xBD</button><button class="ptrail' + (p.trail ? " on" : "") + '" data-id="' + p.id + '" title="\u0648\u0642\u0641 \u0645\u062A\u062D\u0631\u0643" ' + (p.sl == null ? "disabled" : "") + '>\u21E2</button></span><button class="pclose" data-id="' + p.id + '">\u2715 \u0625\u063A\u0644\u0627\u0642</button></div>';
     }).join("") + "</div>" + (S.ps.length > 1 ? '<button id="bCloseAll">\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0643\u0644</button>' : "");
     document.querySelectorAll(".pclose").forEach((b) => b.onclick = () => {
       const p = S.ps.find((x) => String(x.id) === b.dataset.id);
@@ -483,6 +491,7 @@ function updPos() {
     });
     const ca = $("bCloseAll");
     if (ca) ca.onclick = closeAll;
+    mgmtBind();
   }
   updRisk();
 }
@@ -1315,8 +1324,9 @@ function renderJournal() {
   const esc = (s) => String(s != null ? s : "").replace(/[<>&"]/g, (c2) => "&#" + c2.charCodeAt(0) + ";");
   $("journal").innerHTML = "<table><tr><th>\u0627\u0644\u0625\u063A\u0644\u0627\u0642</th><th>\u0627\u0644\u0627\u062A\u062C\u0627\u0647</th><th>\u062F\u062E\u0648\u0644</th><th>SL</th><th>TP</th><th>\u062E\u0631\u0648\u062C</th><th>\u0627\u0644\u0645\u062F\u0629</th><th>$</th><th>R</th><th>\u0627\u0644\u0633\u0628\u0628/\u0627\u0644\u0634\u0639\u0648\u0631</th></tr>" + j.slice().reverse().map((t) => {
     var _a, _b, _c;
-    return `<tr><td>${esc(t.close)}</td><td>${t.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639"}</td><td>${t.entry}</td><td>${(_a = t.sl) != null ? _a : "\u2014"}</td><td>${(_b = t.tp) != null ? _b : "\u2014"}</td><td>${t.exit} ${esc(t.reason)}</td><td>${t.dur != null ? durTxt(t.dur) : "\u2014"}</td><td class="${t.pnl >= 0 ? "w" : "l"}">${t.pnl}</td><td>${(_c = t.R) != null ? _c : "\u2014"}</td><td>${esc(t.why)} / ${t.conf === "confident" ? "\u{1F4AA} " : t.conf === "hesitant" ? "\u{1F914} " : ""}${esc(t.feeling)}</td></tr>`;
+    return `<tr><td>${esc(t.close)}</td><td>${t.side === "buy" ? "\u0634\u0631\u0627\u0621" : "\u0628\u064A\u0639"}</td><td>${t.entry}</td><td>${(_a = t.sl) != null ? _a : "\u2014"}</td><td>${(_b = t.tp) != null ? _b : "\u2014"}</td><td>${t.exit} ${esc(t.reason)}</td><td>${t.dur != null ? durTxt(t.dur) : "\u2014"}</td><td class="${t.pnl >= 0 ? "w" : "l"}">${t.pnl}${t.cost ? `<br><small>\u2212${t.cost}</small>` : ""}</td><td>${(_c = t.R) != null ? _c : "\u2014"}</td><td>${esc(t.why)} / ${t.conf === "confident" ? "\u{1F4AA} " : t.conf === "hesitant" ? "\u{1F914} " : ""}${esc(t.feeling)}</td></tr>`;
   }).join("") + "</table>";
+  edgeStats(j);
 }
 let FEEL = null;
 const FEELTXT = { confident: "\u0648\u0627\u062B\u0642", hesitant: "\u0645\u062A\u0631\u062F\u062F" };
@@ -1458,6 +1468,7 @@ async function init() {
   } else await startAt(randStart());
   $("startDate").value = new Date(S.cur * 1e3).toISOString().slice(0, 10);
   renderJournal();
+  costUI();
   requestAnimationFrame(draw);
   ts.scrollToRealTime();
 }
@@ -1504,7 +1515,15 @@ async function stepBack(auto) {
       gone.forEach((t) => {
         S.balance = +(S.balance - t.pnl).toFixed(2);
       });
-      for (const last of gone) if (last.openT != null && last.openT <= to) S.ps.push({ id: last.id, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
+      for (const last of gone) {
+        if (last.openT == null || last.openT > to) continue;
+        const ex = S.ps.find((x) => x.id === (last.pid || last.id));
+        if (ex) {
+          ex.lots = +(ex.lots + last.lots).toFixed(2);
+          continue;
+        }
+        S.ps.push({ id: last.pid || last.id, sl0: last.sl0, side: last.side, quick: last.quick, entry: last.entry, sl: last.sl, tp: last.tp, lots: last.lots, open: last.openT, tf: last.tf, why: last.why, feel: last.feeling, conf: last.conf, bal0: last.bal0 != null ? last.bal0 : S.balance, ctx: last.ctx });
+      }
       setJournal(keep);
       renderJournal();
     }
@@ -2074,6 +2093,325 @@ $("bCoachShare").onclick = async () => {
   } catch (e) {
   }
 };
+const SPR_H = (h) => h >= 13 && h <= 16 ? 0.2 : h >= 7 && h <= 12 ? 0.25 : h >= 17 && h <= 20 ? 0.3 : h >= 21 && h <= 22 ? 0.6 : 0.4;
+const SWAP = { buy: -45, sell: 15 };
+function costCfg() {
+  S.cost = Object.assign({ on: true, mode: "auto", spread: 0.3, comm: 0, slip: 0.05, swap: true }, S.cost || {});
+  return S.cost;
+}
+function spreadAt(t) {
+  const c = costCfg();
+  return c.mode === "fixed" ? c.spread : SPR_H(new Date(t * 1e3).getUTCHours());
+}
+function swapNights(t0, t1) {
+  let n = 0, b = Math.floor(t0 / 86400) * 86400 + 21 * 3600;
+  if (b <= t0) b += 86400;
+  for (; b <= t1; b += 86400) {
+    const wd = new Date(b * 1e3).getUTCDay();
+    if (wd === 0 || wd === 6) continue;
+    n += wd === 3 ? 3 : 1;
+  }
+  return n;
+}
+function tradeCost(p, tc, lots) {
+  const c = costCfg();
+  if (!c.on) return { total: 0, spread: 0, slip: 0, comm: 0, swap: 0 };
+  const sp = +(spreadAt(p.open) * OZ * lots).toFixed(2), sl = +(2 * c.slip * OZ * lots).toFixed(2), cm = +((c.comm || 0) * lots).toFixed(2), nights = c.swap ? swapNights(p.open, tc) : 0, sw = +(-SWAP[p.side] * nights * lots).toFixed(2);
+  return { total: +(sp + sl + cm + sw).toFixed(2), spread: sp, slip: sl, comm: cm, swap: sw, nights };
+}
+function openCost(p) {
+  const c = costCfg();
+  if (!c.on) return 0;
+  return (spreadAt(p.open) + 2 * c.slip) * OZ * p.lots + (c.comm || 0) * p.lots + (c.swap ? -SWAP[p.side] * swapNights(p.open, S.cur) * p.lots : 0);
+}
+function costUI() {
+  const c = costCfg();
+  $("cOn").checked = c.on;
+  $("cMode").value = c.mode;
+  $("cSpread").value = c.spread;
+  $("cComm").value = c.comm;
+  $("cSlip").value = c.slip;
+  $("cSwap").checked = c.swap;
+  $("cSpread").disabled = c.mode !== "fixed";
+  const sp = spreadAt(S.cur || Date.now() / 1e3);
+  $("cInfo").textContent = c.on ? "\u0627\u0644\u0633\u0628\u0631\u064A\u062F \u0627\u0644\u0622\u0646 \u2248 " + sp.toFixed(2) + "$ \xB7 \u0627\u0644\u062A\u0643\u0644\u0641\u0629/\u0644\u0648\u062A \u2248 " + ((sp + 2 * c.slip) * OZ + (+c.comm || 0)).toFixed(0) + "$ (+swap)" : "\u0627\u0644\u062A\u0643\u0627\u0644\u064A\u0641 \u0645\u062A\u0648\u0642\u0641\u0629";
+}
+["cOn", "cMode", "cSpread", "cComm", "cSlip", "cSwap"].forEach((id) => {
+  $(id).onchange = () => {
+    const c = costCfg();
+    c.on = $("cOn").checked;
+    c.mode = $("cMode").value;
+    c.spread = +$("cSpread").value || 0;
+    c.comm = +$("cComm").value || 0;
+    c.slip = +$("cSlip").value || 0;
+    c.swap = $("cSwap").checked;
+    save();
+    costUI();
+    updPos();
+  };
+});
+function trailUpd(M, i, p) {
+  if (!p.trail || p.sl == null) return;
+  const d = p.side === "buy" ? 1 : -1, dist = p.trail;
+  const fav = d > 0 ? M.h[i] - p.entry : p.entry - M.l[i];
+  p.best = Math.max(p.best || 0, fav);
+  if (p.best < dist) return;
+  const ns = +(d > 0 ? p.entry + p.best - dist : p.entry - p.best + dist).toFixed(2);
+  if (d > 0 ? ns > p.sl : ns < p.sl) {
+    p.sl = ns;
+    syncBox(p);
+  }
+}
+function syncBox(p) {
+  (S.draw || []).forEach((d) => {
+    if (d.type === "pos" && d.st === "live" && d.posId === p.id) d.sl = p.sl;
+  });
+  dirty++;
+}
+function moveBE(p) {
+  if (p.sl == null) return;
+  const d = p.side === "buy" ? 1 : -1;
+  if ((S.price - p.entry) * d <= 0) return alert("\u0627\u0644\u0633\u0639\u0631 \u0644\u0627\u0632\u0645 \u064A\u0643\u0648\u0646 \u0628\u0631\u0628\u062D \u0644\u062A\u0646\u0642\u0644 \u0627\u0644\u0648\u0642\u0641 \u0644\u0644\u062F\u062E\u0648\u0644");
+  snap && snap();
+  p.be = true;
+  p.sl = +p.entry.toFixed(2);
+  syncBox(p);
+  save();
+  updLines();
+  updPos();
+  status("\u{1F512} \u0627\u0644\u0648\u0642\u0641 \u0639\u0644\u0649 \u0627\u0644\u062F\u062E\u0648\u0644 (BE)");
+}
+function halfClose(p) {
+  closePos(S.price, "\u062C\u0632\u0626\u064A 50%", null, p, 0.5);
+}
+function toggleTrail(p) {
+  if (p.sl == null) return;
+  p.trail = p.trail ? 0 : +Math.abs(p.entry - (p.sl0 != null ? p.sl0 : p.sl)).toFixed(2);
+  save();
+  updPos();
+  status(p.trail ? "\u21E2 \u0648\u0642\u0641 \u0645\u062A\u062D\u0631\u0643 \u0628\u0639\u062F +1R (\u0645\u0633\u0627\u0641\u0629 " + p.trail + "$)" : "\u0648\u0642\u0641 \u0645\u062A\u062D\u0631\u0643 \u0645\u062A\u0648\u0642\u0641");
+}
+function mgmtBind() {
+  const f = (c, fn) => document.querySelectorAll(c).forEach((b) => b.onclick = () => {
+    const p = S.ps.find((x) => String(x.id) === b.dataset.id);
+    if (p) fn(p);
+  });
+  f(".pbe", moveBE);
+  f(".phalf", halfClose);
+  f(".ptrail", toggleTrail);
+}
+function tradeR(t) {
+  if (t.R != null) return t.R;
+  const r = (t.bal0 || S.startBal) * (S.riskPct || 1) / 100;
+  return r ? +(t.pnl / r).toFixed(2) : 0;
+}
+function edgeCalc(j) {
+  const R = j.map(tradeR), n = R.length;
+  if (!n) return { n: 0 };
+  const W = R.filter((x) => x > 0), L = R.filter((x) => x <= 0), E = R.reduce((a, b) => a + b, 0) / n;
+  const sd = n > 1 ? Math.sqrt(R.reduce((a, b) => a + (b - E) * (b - E), 0) / (n - 1)) : 0;
+  let eq = 0, pk = 0, dd = 0, ls = 0, cur = 0;
+  R.forEach((r) => {
+    eq += r;
+    pk = Math.max(pk, eq);
+    dd = Math.max(dd, pk - eq);
+    cur = r <= 0 ? cur + 1 : 0;
+    ls = Math.max(ls, cur);
+  });
+  const Rg = j.map((t) => t.Rg != null ? t.Rg : tradeR(t)), Eg = Rg.reduce((a, b) => a + b, 0) / n, ci = n > 1 ? 1.96 * sd / Math.sqrt(n) : null;
+  return {
+    n,
+    winRate: +(100 * W.length / n).toFixed(1),
+    avgWin: W.length ? +(W.reduce((a, b) => a + b, 0) / W.length).toFixed(2) : null,
+    avgLoss: L.length ? +(-L.reduce((a, b) => a + b, 0) / L.length).toFixed(2) : null,
+    expectancy: +E.toFixed(3),
+    expectancyGross: +Eg.toFixed(3),
+    sd: +sd.toFixed(2),
+    ci95: ci != null ? [+(E - ci).toFixed(2), +(E + ci).toFixed(2)] : null,
+    maxDD_R: +dd.toFixed(2),
+    longestLosingStreak: ls,
+    totalCosts: +j.reduce((a, t) => a + (t.cost || 0), 0).toFixed(2),
+    estimatedR: j.filter((t) => t.R == null || t.Rest).length,
+    tradesNeeded: E > 0 && sd > 0 ? Math.ceil(Math.pow(1.96 * sd / E, 2)) : null,
+    noEdge: n >= 50 && E <= 0
+  };
+}
+function edgeStats(j) {
+  const e = edgeCalc(j), el = $("edge");
+  if (!el) return;
+  if (!e.n) {
+    el.innerHTML = '<div class="small">\u0644\u0627 \u062A\u0648\u062C\u062F \u0635\u0641\u0642\u0627\u062A \u0628\u0639\u062F.</div>';
+    return;
+  }
+  const m30 = Math.min(100, 100 * e.n / 30), m100 = Math.min(100, 100 * e.n / 100), need = e.tradesNeeded, f = (x) => x == null ? "\u2014" : x;
+  el.innerHTML = '<div class="egrid"><div><small>Expectancy (\u0635\u0627\u0641\u064A)</small><b class="' + (e.expectancy > 0 ? "w" : "l") + '">' + (e.expectancy > 0 ? "+" : "") + e.expectancy.toFixed(2) + "R</b></div><div><small>\u0642\u0628\u0644 \u0627\u0644\u062A\u0643\u0627\u0644\u064A\u0641</small><b>" + (e.expectancyGross > 0 ? "+" : "") + e.expectancyGross.toFixed(2) + "R</b></div><div><small>\u0646\u0633\u0628\u0629 \u0627\u0644\u0631\u0628\u062D</small><b>" + e.winRate + "%</b></div><div><small>\u0645\u062A\u0648\u0633\u0637 \u0631\u0628\u062D / \u062E\u0633\u0627\u0631\u0629</small><b>" + f(e.avgWin) + " / " + f(e.avgLoss) + "R</b></div><div><small>\u0623\u0642\u0635\u0649 \u062A\u0631\u0627\u062C\u0639</small><b>" + e.maxDD_R + "R</b></div><div><small>\u0623\u0637\u0648\u0644 \u0633\u0644\u0633\u0644\u0629 \u062E\u0633\u0627\u0631\u0629</small><b>" + e.longestLosingStreak + "</b></div><div><small>\u0641\u062A\u0631\u0629 \u062B\u0642\u0629 95%</small><b>" + (e.ci95 ? e.ci95[0] + " \u2026 " + e.ci95[1] + "R" : "\u2014") + "</b></div><div><small>\u0627\u0644\u062A\u0643\u0627\u0644\u064A\u0641 \u0627\u0644\u0643\u0644\u064A\u0629</small><b>" + e.totalCosts + '$</b></div></div><div class="meter"><div class="small">\u062D\u062C\u0645 \u0627\u0644\u0639\u064A\u0651\u0646\u0629: <b>' + e.n + "</b> \u0635\u0641\u0642\u0629" + (need ? " \xB7 \u0644\u0627\u0632\u0645\u0643 \u062A\u0642\u0631\u064A\u0628\u0627\u064B <b>" + need + "</b> \u0635\u0641\u0642\u0629 \u0644\u062A\u062D\u0643\u0645 \u0639\u0644\u0649 \u0645\u064A\u0632\u062A\u0643 (95%)" : "") + '</div><div class="mbar"><i style="width:' + m100 + '%"></i><span style="left:30%"></span></div><div class="small mlab"><span>0</span><span>30</span><span>100</span></div></div>' + (e.n < 30 ? '<div class="warn">\u26A0 \u0639\u064A\u0651\u0646\u0629 \u0635\u063A\u064A\u0631\u0629 \u062C\u062F\u0627\u064B (\u0623\u0642\u0644 \u0645\u0646 30): \u0627\u0644\u0646\u062A\u064A\u062C\u0629 \u0641\u064A\u0647\u0627 \u062D\u0638 \u0643\u062A\u064A\u0631\u060C \u0645\u0627 \u0641\u064A \u062D\u0643\u0645 \u0628\u0639\u062F.</div>' : e.n < 100 ? '<div class="warn soft">\u26A0 \u0623\u0642\u0644 \u0645\u0646 100 \u0635\u0641\u0642\u0629: \u062D\u0643\u0645 \u0623\u0648\u0644\u064A \u0628\u0633.</div>' : "") + (e.noEdge ? '<div class="info">\u2139\uFE0F \u0642\u0627\u0639\u062F\u0629 \xAB\u0645\u0627 \u0641\u064A \u0645\u064A\u0632\u0629\xBB: \u0628\u0639\u062F ' + e.n + " \u0635\u0641\u0642\u0629 \u0627\u0644\u0640expectancy \u0627\u0644\u0635\u0627\u0641\u064A \u2264 0. \u0627\u0644\u0623\u0641\u0636\u0644 \u062A\u0631\u062C\u0639 \u062E\u0637\u0648\u0629 (replay/demo)\u060C \u062A\u0639\u062F\u0651\u0644 \u0634\u064A \u0648\u0627\u062D\u062F \u0628\u0633\u060C \u0648\u062A\u0642\u064A\u0633 \u0645\u0646 \u062C\u062F\u064A\u062F. (\u0645\u0639\u0644\u0648\u0645\u0629\u060C \u0645\u0634 \u0642\u0641\u0644)</div>" : "") + (e.estimatedR ? '<div class="small">* ' + e.estimatedR + " \u0635\u0641\u0642\u0629 \u0628\u062F\u0648\u0646 \u0648\u0642\u0641: \u0627\u0644\u0640R \u0645\u062D\u0633\u0648\u0628 \u0645\u0646 \u0646\u0633\u0628\u0629 \u0627\u0644\u0645\u062E\u0627\u0637\u0631\u0629 " + (S.riskPct || 1) + "%.</div>" : "");
+}
+function rng32(a) {
+  return function() {
+    a |= 0;
+    a = a + 1831565813 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function ruinSim(wr, rr, risk, n, paths, seed) {
+  const r = rng32(seed || 7), P = [], mdd = [], stk = [];
+  let ruin = 0, dd10 = 0, s6 = 0;
+  for (let k = 0; k < paths; k++) {
+    let eq = 1, pk = 1, dd = 0, cur = 0, st = 0;
+    const keep = k < 40 ? [1] : null;
+    for (let i = 0; i < n; i++) {
+      const w = r() < wr / 100;
+      eq *= w ? 1 + rr * risk / 100 : 1 - risk / 100;
+      pk = Math.max(pk, eq);
+      dd = Math.max(dd, 1 - eq / pk);
+      cur = w ? 0 : cur + 1;
+      st = Math.max(st, cur);
+      if (keep) keep.push(eq);
+    }
+    if (keep) P.push(keep);
+    mdd.push(dd * 100);
+    stk.push(st);
+    if (dd >= 0.5) ruin++;
+    if (dd >= 0.1) dd10++;
+    if (st >= 6) s6++;
+  }
+  const med = (a) => {
+    const b = a.slice().sort((x, y) => x - y);
+    return b[Math.floor(b.length / 2)];
+  };
+  return { paths: P, p_dd10: +(100 * dd10 / paths).toFixed(1), p_ruin: +(100 * ruin / paths).toFixed(1), median_mdd: +med(mdd).toFixed(1), median_streak: med(stk), p_streak6: +(100 * s6 / paths).toFixed(1), expectancy: +(wr / 100 * rr - (1 - wr / 100)).toFixed(2) };
+}
+function openModal(html, cls) {
+  const m = $("modal");
+  m.className = cls || "";
+  m.innerHTML = '<div class="mbox">' + html + "</div>";
+  m.classList.remove("hidden");
+  m.onclick = (e) => {
+    if (e.target === m) closeModal();
+  };
+  const x = m.querySelector(".mx");
+  if (x) x.onclick = closeModal;
+  return m;
+}
+function closeModal() {
+  const m = $("modal");
+  m.classList.add("hidden");
+  m.innerHTML = "";
+}
+function openRuin(def) {
+  def = Object.assign({ wr: 45, rr: 1.5, risk: 1, n: 100 }, def || {});
+  const inp = (id, l, v, mn, mx, st) => '<label class="rs"><span>' + l + '</span><input type="range" id="' + id + 'R" min="' + mn + '" max="' + mx + '" step="' + st + '" value="' + v + '"><input type="number" id="' + id + '" min="' + mn + '" max="' + mx + '" step="' + st + '" value="' + v + '"></label>';
+  openModal('<div class="mh"><b>\u{1F3B2} \u0645\u062D\u0627\u0643\u064A \u0627\u0644\u0633\u0644\u0627\u0633\u0644 \u0648\u0627\u0644\u0625\u0641\u0644\u0627\u0633 (Monte Carlo)</b><button class="mx">\u2715</button></div>' + inp("rsW", "\u0646\u0633\u0628\u0629 \u0627\u0644\u0631\u0628\u062D %", def.wr, 20, 80, 1) + inp("rsRR", "R:R", def.rr, 0.5, 4, 0.1) + inp("rsK", "\u0645\u062E\u0627\u0637\u0631\u0629 % \u0628\u0627\u0644\u0635\u0641\u0642\u0629", def.risk, 0.25, 10, 0.25) + inp("rsN", "\u0639\u062F\u062F \u0627\u0644\u0635\u0641\u0642\u0627\u062A", def.n, 20, 500, 10) + '<canvas id="rsC"></canvas><div id="rsOut" class="egrid"></div><div class="small">2000 \u0645\u0633\u0627\u0631 \u0628\u062A\u0631\u062A\u064A\u0628 \u0639\u0634\u0648\u0627\u0626\u064A \u0644\u0646\u0641\u0633 \u0627\u0644\u0625\u062D\u0635\u0627\u0621\u0627\u062A. \u0627\u0644\u062E\u0637\u0648\u0637 = 40 \u0645\u0633\u0627\u0631\u061B \u0627\u0644\u0623\u062D\u0645\u0631 = \u062D\u062F \u221210%.</div>', "ruin");
+  const ids = ["rsW", "rsRR", "rsK", "rsN"];
+  ids.forEach((id) => {
+    $(id + "R").oninput = () => {
+      $(id).value = $(id + "R").value;
+      run();
+    };
+    $(id).oninput = () => {
+      $(id + "R").value = $(id).value;
+      run();
+    };
+  });
+  function run() {
+    const s = ruinSim(+$("rsW").value, +$("rsRR").value, +$("rsK").value, Math.round(+$("rsN").value), 2e3, 7);
+    window.__ruin = s;
+    const c = $("rsC"), dp = devicePixelRatio || 1, W = c.clientWidth || 300, H = 200;
+    c.width = W * dp;
+    c.height = H * dp;
+    const g = c.getContext("2d");
+    g.scale(dp, dp);
+    g.fillStyle = "#0b0b10";
+    g.fillRect(0, 0, W, H);
+    let mn = 1, mx = 1;
+    s.paths.forEach((p) => p.forEach((v) => {
+      mn = Math.min(mn, v);
+      mx = Math.max(mx, v);
+    }));
+    mn = Math.min(mn, 0.88);
+    const y = (v) => H - 8 - (v - mn) / (mx - mn || 1) * (H - 16), n = s.paths[0].length;
+    g.strokeStyle = "#f2364580";
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.moveTo(0, y(0.9));
+    g.lineTo(W, y(0.9));
+    g.stroke();
+    g.setLineDash([]);
+    s.paths.forEach((p, k) => {
+      g.strokeStyle = p[p.length - 1] >= 1 ? "rgba(154,252,65,.45)" : "rgba(242,54,69,.45)";
+      g.lineWidth = 1;
+      g.beginPath();
+      p.forEach((v, i) => {
+        const X2 = i * (W - 4) / (n - 1) + 2;
+        i ? g.lineTo(X2, y(v)) : g.moveTo(X2, y(v));
+      });
+      g.stroke();
+    });
+    g.strokeStyle = "#888";
+    g.beginPath();
+    g.moveTo(0, y(1));
+    g.lineTo(W, y(1));
+    g.stroke();
+    $("rsOut").innerHTML = '<div><small>Expectancy</small><b class="' + (s.expectancy > 0 ? "w" : "l") + '">' + s.expectancy + "R</b></div><div><small>\u0627\u062D\u062A\u0645\u0627\u0644 \u062A\u0631\u0627\u062C\u0639 \u226510%</small><b>" + s.p_dd10 + "%</b></div><div><small>\u0627\u062D\u062A\u0645\u0627\u0644 \u062E\u0633\u0627\u0631\u0629 \u0646\u0635 \u0627\u0644\u062D\u0633\u0627\u0628</small><b>" + s.p_ruin + "%</b></div><div><small>\u0623\u0642\u0635\u0649 \u062A\u0631\u0627\u062C\u0639 (\u0648\u0633\u064A\u0637)</small><b>" + s.median_mdd + "%</b></div><div><small>\u0623\u0637\u0648\u0644 \u0633\u0644\u0633\u0644\u0629 \u062E\u0633\u0627\u0631\u0629 (\u0648\u0633\u064A\u0637)</small><b>" + s.median_streak + "</b></div><div><small>\u0627\u062D\u062A\u0645\u0627\u0644 6 \u062E\u0633\u0627\u0631\u0627\u062A \u0648\u0631\u0627 \u0628\u0639\u0636</small><b>" + s.p_streak6 + "%</b></div>";
+  }
+  requestAnimationFrame(run);
+}
+function atrNowTf() {
+  if (!B || B.n < 15) return null;
+  let s = 0;
+  for (let i = B.n - 14; i < B.n; i++) {
+    const pc = B.C[i - 1];
+    s += Math.max(B.H[i] - B.L[i], Math.abs(B.H[i] - pc), Math.abs(B.L[i] - pc));
+  }
+  return +(s / 14).toFixed(2);
+}
+function plans() {
+  return LS("gr_plans") || [];
+}
+function openTemplate(kind, onSave) {
+  var _a;
+  kind = kind || "plan";
+  const sel2 = (id, o) => '<select id="' + id + '">' + o.map((x) => '<option value="' + x[0] + '">' + x[1] + "</option>").join("") + "</select>";
+  const P = "<label>\u0627\u062A\u062C\u0627\u0647 D1 " + sel2("tpBias", [["up", "\u0635\u0627\u0639\u062F"], ["down", "\u0647\u0627\u0628\u0637"], ["range", "\u0639\u0631\u0636\u064A"]]) + '</label><label>\u0645\u0633\u062A\u0648\u064A\u0627\u062A H4 <input id="tpLv" placeholder="\u0645\u062B\u0644\u0627\u064B 2350 / 2372"></label><label>\u0627\u0644\u0640Regime ' + sel2("tpReg", [["trend", "\u062A\u0631\u0646\u062F"], ["range", "\u0631\u064A\u0646\u062C"]]) + sel2("tpVol", [["normal", "\u062A\u0642\u0644\u0628 \u0637\u0628\u064A\u0639\u064A"], ["high", "\u062A\u0642\u0644\u0628 \u0639\u0627\u0644\u064A"], ["low", "\u062A\u0642\u0644\u0628 \u0648\u0627\u0637\u064A"]]) + "</label><label>\u0623\u062E\u0628\u0627\u0631 \u0627\u0644\u064A\u0648\u0645 " + sel2("tpNews", [["ok", "\u064A\u0648\u0645 \u0639\u0627\u062F\u064A"], ["danger", "\u064A\u0648\u0645 \u062E\u0628\u0631 \u2190 \u0645\u0627 \u0641\u064A \u062A\u062F\u0627\u0648\u0644"]]) + "</label><label>ATR (" + S.tf + ') <input id="tpAtr" value="' + ((_a = atrNowTf()) != null ? _a : "") + '"></label><label>\u0625\u0630\u0627\u2026 \u0628\u0639\u0645\u0644\u2026 <input id="tpIf" placeholder="\u0625\u0630\u0627 \u0627\u0644\u0633\u0639\u0631 \u0631\u062C\u0639 \u0644\u0640\u2026 \u0648\u0639\u0645\u0644\u2026 \u0628\u062F\u062E\u0644\u2026 \u0627\u0644\u0648\u0642\u0641\u2026"></label>';
+  const Rv = "<label>\u0627\u0644\u062A\u0632\u0645\u062A \u0628\u0627\u0644\u0642\u0648\u0627\u0639\u062F\u061F " + sel2("tpOk", [["yes", "\u0646\u0639\u0645"], ["partly", "\u062C\u0632\u0626\u064A\u0627\u064B"], ["no", "\u0644\u0627"]]) + "</label><label>\u0646\u0648\u0639 \u0627\u0644\u063A\u0644\u0637\u0629 " + sel2("tpErr", [["none", "\u0645\u0627 \u0641\u064A"], ["rule", "\u0642\u0627\u0639\u062F\u0629"], ["exec", "\u062A\u0646\u0641\u064A\u0630"], ["analysis", "\u062A\u062D\u0644\u064A\u0644"]]) + '</label><label>\u062F\u0631\u0633 \u0648\u0627\u062D\u062F <input id="tpLes" placeholder="\u0634\u0648 \u0631\u062D \u062A\u0639\u0645\u0644 \u063A\u064A\u0631 \u0627\u0644\u0645\u0631\u0629 \u0627\u0644\u062C\u0627\u064A\u0629\u061F"></label>';
+  const last = plans().slice(-4).reverse().map((p) => '<div class="tpl-item"><b>' + (p.type === "plan" ? "\u{1F4DD}" : "\u{1F50D}") + " " + p.replay + "</b> " + (p.type === "plan" ? p.bias + " \xB7 " + p.regime + " \xB7 " + (p.ifthen || "") : p.ok + " \xB7 " + p.err + " \xB7 " + (p.lesson || "")) + "</div>").join("");
+  openModal('<div class="mh"><b>\u{1F4DD} \u062E\u0637\u0629 / \u0645\u0631\u0627\u062C\u0639\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)</b><button class="mx">\u2715</button></div><div class="seg tps"><button data-k="plan" class="' + (kind === "plan" ? "on" : "") + '">\u0642\u0628\u0644 \u0627\u0644\u062C\u0644\u0633\u0629</button><button data-k="review" class="' + (kind === "review" ? "on" : "") + '">\u0628\u0639\u062F \u0627\u0644\u062C\u0644\u0633\u0629</button></div><div class="tpf">' + (kind === "plan" ? P : Rv) + '</div><button id="tpSave" class="cs-go">\u{1F4BE} \u062D\u0641\u0638</button><div class="small">' + (last ? "\u0622\u062E\u0631 \u0627\u0644\u0625\u062F\u062E\u0627\u0644\u0627\u062A:" : "") + "</div>" + last, "tpl");
+  document.querySelectorAll(".tps button").forEach((b) => b.onclick = () => openTemplate(b.dataset.k, onSave));
+  $("tpSave").onclick = () => {
+    const v = (id) => ($(id) || {}).value || "";
+    const rec = kind === "plan" ? { type: "plan", bias: v("tpBias"), levels: v("tpLv"), regime: v("tpReg") + "/" + v("tpVol"), news: v("tpNews"), atr: v("tpAtr"), ifthen: v("tpIf") } : { type: "review", ok: v("tpOk"), err: v("tpErr"), lesson: v("tpLes") };
+    rec.replay = ds(S.cur);
+    rec.at = (/* @__PURE__ */ new Date()).toISOString();
+    rec.tf = S.tf;
+    if (window.__course) rec.course = true;
+    const a = plans();
+    a.push(rec);
+    localStorage.setItem("gr_plans", JSON.stringify(a.slice(-200)));
+    closeModal();
+    status("\u2714 \u0627\u0646\u062D\u0641\u0638");
+    if (onSave) onSave(rec);
+  };
+}
+$("bRuin").onclick = () => openRuin();
+$("bPlan").onclick = () => openTemplate("plan");
+{
+  const base = coachData;
+  coachData = function() {
+    const o = base();
+    const j = journal();
+    o.edgeStats = edgeCalc(j);
+    o.costs = costCfg();
+    o.sessionTemplates = plans();
+    o.course = (() => {
+      const c = LS("gr_course");
+      return c ? { xp: c.xp, streak: c.streak, done: Object.keys(c.done || {}).length, boss: c.boss, series: c.series || null } : null;
+    })();
+    o.management = j.filter((t) => t.be || t.trail || t.partial).length;
+    return o;
+  };
+}
 let CRS = null, CP = null, CMAIN = null, CITEM = null, CSTATE = null;
 const L_ = () => window.I18N && I18N.de() ? "de" : "ar";
 const TX = (o) => o == null ? "" : typeof o === "string" ? o : o[L_()] || o.ar || "";
@@ -2108,6 +2446,7 @@ function modPassed(m) {
 function modUnlocked(m) {
   const r = m.unlock && m.unlock.requires;
   if (!r) return true;
+  if (CP.boss[m.id] || m.path.concat(m.boss.items).some((e) => CP.done[e.id])) return true;
   const pm = CRS.modules.find((x) => x.id === r);
   return pm ? modPassed(pm) : true;
 }
@@ -2248,6 +2587,13 @@ async function itemStart(mi, i, boss) {
   CP.cur = { m: mi, i, boss: !!boss };
   cpSave();
   $("courseView").classList.add("hidden");
+  if (e.task === "trade_series") return seriesStart();
+  if (e.nochart) {
+    window.__courseStep = false;
+    document.body.classList.remove("course-step");
+    sheetTask();
+    return;
+  }
   window.__courseStep = e.task === "identify_candle";
   document.body.classList.toggle("course-step", window.__courseStep);
   await showItemChart(e);
@@ -2265,19 +2611,25 @@ let bossTimer = null;
 function sheetTask() {
   const e = CITEM.e, sh = $("cSheet");
   sh.classList.remove("hidden");
+  sh.classList.toggle("cs-full", !!e.nochart);
   clearInterval(bossTimer);
+  CITEM.skip = false;
   let h = '<div class="cs-head"><button id="csMap" class="cv-x">\u2715</button><span class="cs-kind">' + (CITEM.boss ? "\u{1F451} " + TX(CRS.modules[CITEM.mi].boss.title) + " " + (CITEM.i + 1) + "/" + CRS.modules[CITEM.mi].boss.items.length : (e.kind === "guided" ? "\u{1F4A1}" : "\u{1F3AF}") + " " + (CITEM.i + 1) + "/" + CRS.modules[CITEM.mi].path.length) + '</span><span class="cs-diff">' + e.tf + " \xB7 " + "\u{1F525}".repeat(e.difficulty) + '</span><span id="csTimer"></span></div>';
+  if (e.scenario) h += '<div class="cs-scn">\u{1F4C9} \u062E\u0633\u0627\u0631\u0627\u062A \u0627\u0644\u064A\u0648\u0645: ' + e.scenario.losses_today + " \xB7 " + e.scenario.day_R + "R</div>";
   h += '<div class="cs-prompt">' + TX(e.prompt) + '</div><div class="cs-ans">';
+  if (e.tool === "ruin") h += '<button class="cs-tool" id="csRuin">\u{1F3B2} \u0627\u0641\u062A\u062D \u0627\u0644\u0645\u062D\u0627\u0643\u064A</button>';
+  if (e.tool === "manage") h += '<button class="cs-tool" id="csMan">\u{1F4CA} \u062C\u062F\u0648\u0644 \u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0629</button>';
+  if (e.task === "template") h += '<button class="cs-tool" id="csTpl">\u{1F4DD} \u0627\u0641\u062A\u062D \u0627\u0644\u0646\u0645\u0648\u0630\u062C</button><div class="small">\u0627\u062E\u062A\u064A\u0627\u0631\u064A: \u0628\u062A\u0642\u062F\u0631 \u062A\u062A\u062E\u0637\u0651\u0627\u0647.</div>';
   const t = e.task;
   if (t === "read_price" || t === "calc_number") h += '<input id="csNum" type="number" step="0.01" inputmode="decimal" placeholder="0.00">';
   if (t === "mark_level" || t === "mark_level_and_choose") h += '<button class="cs-tool" data-tool="hline">\u2014 \u0639\u0644\u0651\u0645 \u0627\u0644\u0645\u0633\u062A\u0648\u0649 \u0639\u0644\u0649 \u0627\u0644\u0634\u0627\u0631\u062A</button><div id="csRead" class="small"></div>';
   if (t === "mark_zone") h += '<button class="cs-tool" data-tool="hline">\u2014 \u0627\u0631\u0633\u0645 \u062E\u0637\u064A\u0646: \u0623\u0639\u0644\u0649 \u0648\u0623\u062F\u0646\u0649 \u0627\u0644\u0645\u0646\u0637\u0642\u0629</button><div id="csRead" class="small"></div>';
-  if (t === "place_position") h += '<div class="row"><button class="cs-tool" data-tool="long">\u{1F4C8} \u0634\u0631\u0627\u0621</button><button class="cs-tool" data-tool="short">\u{1F4C9} \u0628\u064A\u0639</button></div><div class="small">\u0627\u0633\u062D\u0628 \u0645\u0642\u0627\u0628\u0636 \u0627\u0644\u0645\u0631\u0628\u0639 \u0644\u0636\u0628\u0637 \u0627\u0644\u062F\u062E\u0648\u0644 \u0648\u0627\u0644\u0648\u0642\u0641 \u0648\u0627\u0644\u0647\u062F\u0641</div><div id="csRead" class="small"></div>';
+  if (t === "place_position" && false) h += '<div class="row"><button class="cs-tool" data-tool="long">\u{1F4C8} \u0634\u0631\u0627\u0621</button><button class="cs-tool" data-tool="short">\u{1F4C9} \u0628\u064A\u0639</button></div><div class="small">\u0627\u0633\u062D\u0628 \u0645\u0642\u0627\u0628\u0636 \u0627\u0644\u0645\u0631\u0628\u0639 \u0644\u0636\u0628\u0637 \u0627\u0644\u062F\u062E\u0648\u0644 \u0648\u0627\u0644\u0648\u0642\u0641 \u0648\u0627\u0644\u0647\u062F\u0641</div><div id="csRead" class="small"></div>';
   if (t === "identify_candle") h += '<div class="small">\u0627\u0633\u062A\u062E\u062F\u0645 \u25B6| \u0623\u0648 \u25B6\uFE0F \u0644\u0644\u062A\u0642\u062F\u0645 \u062B\u0645 \u0627\u0636\u063A\u0637 "\u0647\u0646\u0627"</div>';
   if (e.choices) h += '<div class="cs-choices">' + e.choices.map((c) => '<button class="cs-ch" data-k="' + c.key + '">' + TX(c) + "</button>").join("") + "</div>";
   if (t === "fill_sentence") h += '<div class="cs-fill"><select id="csB1"><option value="">___</option>' + e.blank1_options.map((o, i) => '<option value="' + i + '">' + TX(o) + "</option>").join("") + '</select><select id="csB2"><option value="">___</option>' + e.blank2_options.map((o, i) => '<option value="' + i + '">' + TX(o) + "</option>").join("") + "</select></div>";
-  if (e.sentence_required) h += '<div class="cs-sent small">' + TX(CRS.rules.sentence) + '</div><div class="cs-fill"><input id="csS1" placeholder="___"><input id="csS2" placeholder="___"></div>';
-  h += '</div><div class="cs-act">' + (e.kind === "guided" && CITEM.tries > 0 && e.hint && !CITEM.boss ? '<div class="cs-hint">\u{1F4A1} ' + TX(e.hint) + "</div>" : "") + '<button id="csGo" class="cs-go">' + (t === "identify_candle" ? "\u{1F4CD} \u0647\u0646\u0627" : "\u2714 \u062A\u062D\u0642\u0651\u0642") + "</button></div>";
+  if (t === "place_position") h += '<div class="row"><button class="cs-tool" data-tool="long">\u{1F4C8} \u0634\u0631\u0627\u0621</button><button class="cs-tool" data-tool="short">\u{1F4C9} \u0628\u064A\u0639</button></div><div class="small">\u0627\u0633\u062D\u0628 \u0645\u0642\u0627\u0628\u0636 \u0627\u0644\u0645\u0631\u0628\u0639 \u0644\u0636\u0628\u0637 \u0627\u0644\u062F\u062E\u0648\u0644 \u0648\u0627\u0644\u0648\u0642\u0641 \u0648\u0627\u0644\u0647\u062F\u0641</div><div id="csRead" class="small"></div>';
+  h += '</div><div class="cs-act">' + (e.kind === "guided" && CITEM.tries > 0 && e.hint && !CITEM.boss ? '<div class="cs-hint">\u{1F4A1} ' + TX(e.hint) + "</div>" : "") + (t === "template" ? '<button id="csSkip" class="cs-skip">\u23ED \u062A\u062E\u0637\u0651\u064A</button>' : '<button id="csGo" class="cs-go">' + (t === "identify_candle" ? "\u{1F4CD} \u0647\u0646\u0627" : "\u2714 \u062A\u062D\u0642\u0651\u0642") + "</button>") + (e.skip_allowed ? '<button id="csSkip" class="cs-skip">\u23ED \u0645\u0627 \u0641\u064A \u0635\u0641\u0642\u0629 (Skip)</button>' : "") + "</div>";
   sh.innerHTML = h;
   $("csMap").onclick = () => {
     clearInterval(bossTimer);
@@ -2299,8 +2651,35 @@ function sheetTask() {
     const el = $(id);
     if (el) el.oninput = el.onchange = gate;
   });
-  $("csGo").onclick = () => submitItem();
+  if ($("csGo")) $("csGo").onclick = () => submitItem();
   gate();
+  if ($("csSkip")) $("csSkip").onclick = () => {
+    if (t === "template") {
+      CP.cur = null;
+      cpSave();
+      return nextItem();
+    }
+    CITEM.skip = true;
+    submitItem();
+  };
+  if ($("csRuin")) $("csRuin").onclick = () => openRuin(e.sim);
+  if ($("csMan")) $("csMan").onclick = () => manageTable();
+  if ($("csTpl")) $("csTpl").onclick = () => openTemplate(e.template, () => {
+    CITEM.tplSaved = true;
+    submitItem();
+  });
+  if (e.timer_s && !CITEM.boss) {
+    const end = Date.now() + e.timer_s * 1e3;
+    bossTimer = setInterval(() => {
+      const r = Math.max(0, Math.round((end - Date.now()) / 1e3));
+      const el = $("csTimer");
+      if (el) el.textContent = "\u23F1 " + r + "s";
+      if (r <= 0) {
+        clearInterval(bossTimer);
+        submitItem(true);
+      }
+    }, 250);
+  }
   if (CITEM.boss) {
     const tl = CRS.modules[CITEM.mi].boss.timer_s_per_item || 90, end = Date.now() + tl * 1e3;
     bossTimer = setInterval(() => {
@@ -2318,7 +2697,6 @@ function gate() {
   const e = CITEM.e, go = $("csGo");
   if (!go) return;
   let ok = true;
-  if (e.sentence_required) ok = !!($("csS1").value.trim() && $("csS2").value.trim());
   if (e.task === "fill_sentence") ok = $("csB1").value !== "" && $("csB2").value !== "";
   go.disabled = !ok;
 }
@@ -2382,6 +2760,14 @@ function scoreItem() {
     ua.b1 = +$("csB1").value;
     ua.b2 = +$("csB2").value;
     sc = 0.5 * (ua.b1 === a.blank1 ? 1 : 0) + 0.5 * (ua.b2 === a.blank2 ? 1 : 0);
+  } else if (t === "template") {
+    sc = CITEM.tplSaved ? 1 : 0;
+  } else if (t === "place_position" && CITEM.skip) {
+    ua.skip = true;
+    sc = a.action === "skip" ? 1 : 0.3;
+  } else if (t === "place_position" && a.action === "skip") {
+    ua.order = true;
+    sc = 0;
   } else if (t === "place_position") {
     const d = lastDraw("pos");
     if (d) {
@@ -2415,6 +2801,7 @@ async function submitItem(timeout) {
     CP.xp += xp;
     bumpStreak();
   } else {
+    if (!CSTATE || CSTATE.mi !== CITEM.mi) CSTATE = { mi: CITEM.mi, scores: [], t0: Date.now() };
     CSTATE.scores.push(sc);
     CP.xp += Math.round(e.xp * sc);
     bumpStreak();
@@ -2428,6 +2815,9 @@ async function submitItem(timeout) {
   }
   if (e.task === "place_position") S.draw.push({ type: "pos", side: a.side === "long" ? "buy" : "sell", t: S.cur, t2: S.cur + TFS[e.tf] * 25, e: a.entry, sl: a.sl, tp: a.tp, st: "draft" });
   dirty++;
+  if (e.nochart) {
+    return sheetReveal(sc, stars, xp, timeout);
+  }
   if (e.task !== "identify_candle") {
     busy = true;
     try {
@@ -2505,3 +2895,130 @@ window.GRC = { get CP() {
 }, open: courseOpen, exit: courseExit, itemStart, bossStart, map: courseMap, get crs() {
   return CRS;
 } };
+function manageTable() {
+  const st = CRS.stats && CRS.stats.manage;
+  if (!st) return;
+  const N = { fixed: "\u062B\u0627\u0628\u062A 2R", be: "Breakeven \u0639\u0646\u062F +1R", partial: "\u0646\u0635 \u0639\u0646\u062F +1R", trail: "Trailing \u0628\u0639\u062F +1R" };
+  openModal('<div class="mh"><b>\u{1F4CA} 50 \u0635\u0641\u0642\u0629 OB \u062D\u0642\u064A\u0642\u064A\u0629 (\u0635\u0627\u0641\u064A \u0628\u0639\u062F \u0627\u0644\u062A\u0643\u0627\u0644\u064A\u0641)</b><button class="mx">\u2715</button></div><table class="mtab"><tr><th></th><th>\u0645\u062A\u0648\u0633\u0637 R</th><th>\u0631\u0628\u062D %</th><th>\u0645\u062C\u0645\u0648\u0639 R</th><th>Max DD</th></tr>' + Object.keys(st).map((k) => "<tr><td>" + N[k] + '</td><td class="' + (st[k].avgR > 0 ? "w" : "l") + '">' + st[k].avgR + "</td><td>" + st[k].win_pct + "</td><td>" + st[k].total + "</td><td>" + st[k].maxDD + "</td></tr>").join("") + '</table><div class="small">\u0627\u0644\u0635\u0641\u0642\u0627\u062A \u0645\u0646\u062A\u0642\u0627\u0629 \u0628\u062F\u0648\u0646 \u0645\u0627 \u0646\u0634\u0648\u0641 \u0627\u0644\u0646\u062A\u064A\u062C\u0629. \u0639\u064A\u0651\u0646\u0629 50 = \u0645\u0624\u0634\u0631\u060C \u0645\u0634 \u0642\u0627\u0646\u0648\u0646.</div>', "tpl");
+}
+function serState() {
+  CP.serState = CP.serState || { k: 0, res: [] };
+  return CP.serState;
+}
+async function seriesStart() {
+  const st = serState();
+  if (st.k >= CITEM.e.days.length) {
+    st.k = 0;
+    st.res = [];
+  }
+  cpSave();
+  await seriesDay();
+}
+async function seriesDay() {
+  const e = CITEM.e, st = serState(), day = e.days[st.k];
+  window.__courseStep = false;
+  document.body.classList.remove("course-step");
+  await showItemChart({ tf: day.tf, start_ts: day.start_ts });
+  const sh = $("cSheet");
+  sh.classList.remove("hidden", "cs-full");
+  const netR = st.res.reduce((a, r) => a + (r.netR || 0), 0), adh = st.res.length ? st.res.reduce((a, r) => a + r.adh, 0) / st.res.length : 1;
+  sh.innerHTML = '<div class="cs-head"><button id="csMap" class="cv-x">\u2715</button><span class="cs-kind">\u{1F451} ' + (L_() === "de" ? "Serie" : "\u0633\u0644\u0633\u0644\u0629") + " " + (st.k + 1) + "/" + e.days.length + '</span><span class="cs-diff">ATR ' + day.atr + " \xB7 spread " + day.spread + '$</span></div><div class="ser-bar"><span>\u03A3 <b class="' + (netR >= 0 ? "w" : "l") + '">' + (netR >= 0 ? "+" : "") + netR.toFixed(2) + "R</b></span><span>\u0627\u0644\u062A\u0632\u0627\u0645 <b>" + Math.round(adh * 100) + "%</b></span><span>" + st.res.map((r) => r.skip ? "\xB7" : r.netR > 0 ? "\u{1F7E2}" : "\u{1F534}").join("") + '</span></div><div class="cs-prompt">' + TX(e.prompt) + '</div><div class="row"><button class="cs-tool" data-tool="long">\u{1F4C8} \u0634\u0631\u0627\u0621</button><button class="cs-tool" data-tool="short">\u{1F4C9} \u0628\u064A\u0639</button></div><div class="row small"><label>\u0627\u0644\u0645\u062E\u0627\u0637\u0631\u0629 <select id="serRisk"><option value="0.5">0.5%</option><option value="1" selected>1%</option><option value="2">2%</option></select></label><span id="csRead"></span></div><div class="cs-act"><button id="serGo" class="cs-go">\u2714 \u0646\u0641\u0651\u0630</button><button id="serSkip" class="cs-skip">\u23ED \u0645\u0627 \u0641\u064A \u0635\u0641\u0642\u0629 \u0627\u0644\u064A\u0648\u0645</button></div>';
+  $("csMap").onclick = () => {
+    $("cSheet").classList.add("hidden");
+    setMode("none");
+    courseMap(CITEM.mi);
+    $("courseView").classList.remove("hidden");
+  };
+  document.querySelectorAll("#cSheet .cs-tool").forEach((b) => b.onclick = () => {
+    if (mode !== b.dataset.tool) setMode(b.dataset.tool);
+    scrollTo(0, 0);
+  });
+  $("serSkip").onclick = () => seriesResolve(null);
+  $("serGo").onclick = () => {
+    const d = lastDraw("pos");
+    if (!d) return alert("\u062D\u0637 \u0645\u0631\u0628\u0639 \u0634\u0631\u0627\u0621 \u0623\u0648 \u0628\u064A\u0639 \u0623\u0648\u0644\u0627\u064B\u060C \u0623\u0648 \u0627\u062E\u062A\u0627\u0631 \xAB\u0645\u0627 \u0641\u064A \u0635\u0641\u0642\u0629\xBB");
+    seriesResolve(d);
+  };
+}
+async function seriesResolve(d) {
+  const e = CITEM.e, st = serState(), day = e.days[st.k], rules = e.rules;
+  setMode("none");
+  let r;
+  if (!d) {
+    r = { skip: true, adh: 1, netR: 0 };
+  } else {
+    const risk = +$("serRisk").value, dir = d.side === "buy" ? 1 : -1, px = S.price, shift = px - d.e, E = px, SL = +(d.sl + shift).toFixed(2), TP = +(d.tp + shift).toFixed(2), dist = Math.abs(E - SL);
+    const prevLoss = st.res.length && !st.res[st.res.length - 1].skip && st.res[st.res.length - 1].netR < 0, prevRisk = st.res.length ? st.res[st.res.length - 1].risk || 1 : 1;
+    const okStop = (SL - E) * dir < 0 && dist >= rules.stop_atr[0] * day.atr && dist <= rules.stop_atr[1] * day.atr, okRR = (TP - E) * dir > 0 && Math.abs(TP - E) >= rules.min_rr * dist - 1e-9, okRisk = risk === rules.risk_pct && !(prevLoss && risk > prevRisk);
+    const M = await m1(S.cur + 60, S.cur + rules.max_hold_bars * 3600);
+    let ex = null, et = null, why = "time";
+    for (let i = 0; i < M.n; i++) {
+      if (M.t[i] <= S.cur) continue;
+      const hs = dir > 0 ? M.l[i] <= SL : M.h[i] >= SL, ht = dir > 0 ? M.h[i] >= TP : M.l[i] <= TP;
+      if (hs) {
+        ex = SL;
+        et = M.t[i];
+        why = "SL";
+        break;
+      }
+      if (ht) {
+        ex = TP;
+        et = M.t[i];
+        why = "TP";
+        break;
+      }
+      if (M.t[i] > S.cur + rules.max_hold_bars * 3600) break;
+    }
+    if (ex == null && M.n) {
+      let i = M.n - 1;
+      while (i > 0 && M.t[i] > S.cur + rules.max_hold_bars * 3600) i--;
+      ex = M.c[i];
+      et = M.t[i];
+    }
+    const cost = day.spread + 2 * 0.05, gross = dist ? (ex - E) * dir / dist : 0, netR = +(gross - cost / dist).toFixed(2);
+    d.e = E;
+    d.sl = SL;
+    d.tp = TP;
+    d.st = "done";
+    d.res = why;
+    if (et) {
+      d.t2 = Math.max(d.t2, et);
+      S.cur = et;
+      await render();
+    }
+    dirty++;
+    r = { side: d.side, entry: E, sl: SL, tp: TP, exit: +(+ex).toFixed(2), why, risk, netR, grossR: +gross.toFixed(2), costR: +(cost / dist).toFixed(3), rules: { stop: okStop, rr: okRR, risk: okRisk }, adh: ((okStop ? 1 : 0) + (okRR ? 1 : 0) + (okRisk ? 1 : 0)) / 3 };
+  }
+  r.day = day.start_utc;
+  st.res.push(r);
+  st.k++;
+  cpSave();
+  const sh = $("cSheet"), last = st.k >= e.days.length;
+  sh.innerHTML = '<div class="cs-head"><span class="cs-kind">' + st.k + "/" + e.days.length + "</span>" + (r.skip ? '<span class="cs-res">\u23ED \u0645\u0627 \u0641\u064A \u0635\u0641\u0642\u0629 (\u0645\u0644\u062A\u0632\u0645)</span>' : '<span class="cs-res ' + (r.netR > 0 ? "ok" : "bad") + '">' + r.why + " \xB7 " + (r.netR > 0 ? "+" : "") + r.netR + "R \u0635\u0627\u0641\u064A</span>") + "</div>" + (r.skip ? "" : '<div class="small">' + ["stop", "rr", "risk"].map((k) => (r.rules[k] ? "\u2705 " : "\u274C ") + { stop: "\u0648\u0642\u0641 0.5\u20133 ATR", rr: "\u0647\u062F\u0641 \u2265 1.5R", risk: "\u0645\u062E\u0627\u0637\u0631\u0629 1% \u0628\u062F\u0648\u0646 \u062A\u0643\u0628\u064A\u0631 \u0628\u0639\u062F \u062E\u0633\u0627\u0631\u0629" }[k]).join("<br>") + "<br>\u062A\u0643\u0627\u0644\u064A\u0641: " + r.costR + "R</div>") + '<div class="cs-act"><button id="serNext" class="cs-go">' + (last ? "\u{1F3C1} \u0627\u0644\u0646\u062A\u064A\u062C\u0629" : "\u0627\u0644\u064A\u0648\u0645 \u0627\u0644\u062A\u0627\u0644\u064A \u2190") + "</button></div>";
+  $("serNext").onclick = () => last ? seriesFinish() : seriesDay();
+}
+function seriesFinish() {
+  const e = CITEM.e, m = CRS.modules[CITEM.mi], st = serState(), res = st.res;
+  const adh = res.reduce((a, r) => a + r.adh, 0) / res.length, net = res.reduce((a, r) => a + (r.netR || 0), 0), trades = res.filter((r) => !r.skip).length, minT = e.rules && e.rules.min_trades || 8;
+  let pct = Math.round(70 * adh + 30 * Math.max(0, Math.min(1, (net + 5) / 10)));
+  const few = trades < minT;
+  if (few) pct = Math.min(pct, 60);
+  const pass = pct >= (m.boss.pass_pct || 75);
+  CP.series = { last: { pct, adh: +(adh * 100).toFixed(1), netR: +net.toFixed(2), trades, at: (/* @__PURE__ */ new Date()).toISOString(), res }, best: Math.max(CP.series && CP.series.best || 0, pct), tries: (CP.series && CP.series.tries || 0) + 1 };
+  const b = CP.boss[m.id] || {};
+  b.best = Math.max(b.best || 0, pct);
+  b.passed = b.passed || pass;
+  b.tries = (b.tries || 0) + 1;
+  CP.boss[m.id] = b;
+  CP.xp += Math.round(e.xp * pct / 100) + (pass ? 100 : 0);
+  bumpStreak();
+  CP.serState = null;
+  CP.cur = null;
+  cpSave();
+  $("cSheet").innerHTML = '<div class="cs-boss ' + (pass ? "ok" : "bad") + '"><div class="cs-big">' + (pass ? "\u{1F3C6}" : "\u{1F4AA}") + "</div><b>" + pct + "% / " + (m.boss.pass_pct || 75) + '%</b><div class="egrid"><div><small>\u0627\u0644\u062A\u0632\u0627\u0645</small><b>' + Math.round(adh * 100) + '%</b></div><div><small>\u0635\u0627\u0641\u064A</small><b class="' + (net >= 0 ? "w" : "l") + '">' + (net >= 0 ? "+" : "") + net.toFixed(2) + "R</b></div><div><small>\u0635\u0641\u0642\u0627\u062A</small><b>" + trades + '/20</b></div></div><div class="small">\u0627\u0644\u0639\u0644\u0627\u0645\u0629 = 70% \u0627\u0644\u062A\u0632\u0627\u0645 + 30% \u0627\u0644\u0646\u062A\u064A\u062C\u0629 \u0627\u0644\u0635\u0627\u0641\u064A\u0629. ' + (few ? "\u0644\u0627\u0632\u0645 " + minT + " \u0635\u0641\u0642\u0627\u062A \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644 (\u0627\u0644\u0639\u0644\u0627\u0645\u0629 \u0645\u062D\u062F\u0648\u062F\u0629 \u0628\u064060%). " : "") + (pass ? "\u062C\u0627\u0647\u0632 \u0644\u0644\u062F\u064A\u0645\u0648 \u0628\u0646\u0641\u0633 \u0627\u0644\u0642\u0648\u0627\u0639\u062F." : "\u0631\u0627\u062C\u0639 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0648\u062C\u0631\u0651\u0628 \u0645\u0631\u0629 \u062A\u0627\u0646\u064A\u0629.") + '</div><button id="csDone" class="cs-go">\u0627\u0644\u062E\u0631\u064A\u0637\u0629</button></div>';
+  $("csDone").onclick = () => {
+    $("cSheet").classList.add("hidden");
+    courseMap(CITEM.mi);
+    $("courseView").classList.remove("hidden");
+  };
+}

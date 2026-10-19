@@ -7,7 +7,7 @@ window.onerror=function(m,src,l,c){show(m+' ('+(src||'').split('/').pop()+':'+l+
 window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.reason&&e.reason.message||e.reason));});window.__showErr=show;})();</script>
 <script src="vendor/lightweight-charts-4.2.0.compat.js"></script>
 <script>if(!window.LightweightCharts)window.__showErr('تعذر تحميل مكتبة الرسم البياني');</script>
-<link rel="stylesheet" href="style.css?v=25"></head><body>
+<link rel="stylesheet" href="style.css?v=26"></head><body>
 <div id="app">
 <div id="top">
 <header><span class="brand">🟡 <b>الغرفة</b><small>XAUUSD</small></span><span id="clock">—</span> <span id="price"></span> <span id="status"></span></header>
@@ -69,6 +69,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  
  <div class="row"><button id="bBuy" class="buy">▲ شراء BUY</button><button id="bSell" class="sell">▼ بيع SELL</button><button id="bClose">إغلاق الصفقة</button></div>
  <div class="row small"><label>المخاطرة % <input id="riskPct" type="number" step="0.1" value="1" style="width:70px"></label><span>(لحجم لوت مربع المركز)</span></div>
+ <details id="costBox"><summary>💸 التكاليف (سبريد، عمولة، swap)</summary><div class="row small"><label><input type="checkbox" id="cOn" checked> تطبيق التكاليف</label><label>السبريد <select id="cMode"><option value="auto">حسب الساعة</option><option value="fixed">ثابت</option></select></label><label>$ <input id="cSpread" type="number" step="0.01" value="0.30" style="width:60px"></label></div><div class="row small"><label>عمولة $/لوت <input id="cComm" type="number" step="0.5" value="0" style="width:60px"></label><label>انزلاق $ <input id="cSlip" type="number" step="0.01" value="0.05" style="width:60px"></label><label><input type="checkbox" id="cSwap" checked> swap</label></div><div class="small" id="cInfo"></div></details>
  <div id="pos">لا توجد صفقة مفتوحة</div>
  <div class="row small">الرصيد: <b id="bal">1000</b>$ &nbsp; رصيد البداية <input id="startBal" type="number" value="1000"></div>
 </div>
@@ -79,7 +80,7 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div class="row"><label>دخول <input id="qE" type="number" step="0.01"></label><label>SL <input id="qSL" type="number" step="0.01"></label><label>TP <input id="qTP" type="number" step="0.01"></label>
  <label>اكشف <select id="qN"><option>10</option><option selected>20</option><option>50</option></select> شمعة</label></div>
  <div class="row"><button id="qGo">👁 اكشف وقيّم</button><button id="qX">إنهاء الاختبار</button></div><div id="qRes" style="padding:6px"></div></div>
-<div class="panel" id="statsP"><h3>الإحصائيات</h3><div id="stats"></div><canvas id="eq" height="120"></canvas></div>
+<div class="panel" id="statsP"><h3>الإحصائيات</h3><div id="stats"></div><div id="edge"></div><canvas id="eq" height="120"></canvas><div class="row"><button id="bRuin">🎲 محاكي السلاسل والإفلاس</button><button id="bPlan">📝 خطة / مراجعة</button></div></div>
 <div class="panel"><h3>الجلسة</h3>
  <div class="row"><input type="date" id="startDate"><button id="bStart">ابدأ من التاريخ</button><button id="bRand">تاريخ عشوائي</button></div>
  <div class="small">يتم حفظ موضعك تلقائياً. البيانات: <span id="range"></span> (توقيت برلين)</div></div>
@@ -88,4 +89,5 @@ window.addEventListener('unhandledrejection',function(e){show('Promise: '+(e.rea
  <div id="journal"></div></div>
 </aside>
 </div>
-<script src="i18n.js?v=25"></script><script src="app.js?v=25"></script></body></html>
+<script src="i18n.js?v=26"></script><div id="modal" class="hidden"></div>
+<script src="app.js?v=26"></script></body></html>
