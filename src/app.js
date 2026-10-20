@@ -383,7 +383,7 @@ function parseCsv(s){s=s.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=fal
 async function startAt(t){stopPlay();const c=await lastM1Before(t);if(c==null)return alert('لا توجد بيانات');S.cur=c;S.ps=[];await render();
  // snap to end of current bar of chosen tf
  const tc=await targetNext();if(tc)S.cur=tc;await render();save();}
-function randStart(){const last=Date.parse(MAN.last)/1000,first=last-3*365*86400;let t;do{t=first+Math.random()*(last-first-7*86400)}while([0,6].includes(new Date(t*1000).getUTCDay()));return Math.floor(t/86400)*86400+6*3600+Math.floor(Math.random()*11)*3600;}
+function randStart(){const last=Date.parse(MAN.last)/1000,first=Date.parse(MAN.first)/1000+30*86400;let t;do{t=first+Math.random()*(last-first-7*86400)}while([0,6].includes(new Date(t*1000).getUTCDay()));return Math.floor(t/86400)*86400+6*3600+Math.floor(Math.random()*11)*3600;}
 async function init(){
  MAN=await (await fetch('data/manifest.json')).json();
  $('range').textContent=ds(Date.parse(MAN.first)/1000)+' → '+ds(Date.parse(MAN.last)/1000);

@@ -1542,7 +1542,7 @@ async function startAt(t) {
   save();
 }
 function randStart() {
-  const last = Date.parse(MAN.last) / 1e3, first = last - 3 * 365 * 86400;
+  const last = Date.parse(MAN.last) / 1e3, first = Date.parse(MAN.first) / 1e3 + 30 * 86400;
   let t;
   do {
     t = first + Math.random() * (last - first - 7 * 86400);
