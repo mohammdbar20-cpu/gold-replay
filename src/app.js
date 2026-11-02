@@ -545,3 +545,30 @@ $('bCoach').onclick=()=>dl('gold-coach-'+new Date().toISOString().slice(0,10)+'.
 $('bCoachCopy').onclick=async()=>{const s=JSON.stringify(coachData());try{await navigator.clipboard.writeText(s);status('تم النسخ — الصقه في المحادثة')}catch(e){prompt('انسخ النص:',s)}};
 $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=new File([s],'gold-coach.json',{type:'application/json'});
  try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Gold coach'});else if(navigator.share)await navigator.share({text:s});else $('bCoach').click()}catch(e){}};
+
+// ========== Gold Indicator ==========
+let goldOn = false, goldSeries = null, goldSignals = [];
+function updGold() {
+  if (!B || !goldOn) {
+    if (goldSeries) goldSeries.forEach(s => s.setData([]));
+    return;
+  }
+  if (!goldSeries) {
+    goldSeries = [
+      chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false}),
+      chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false}),
+      chart.addLineSeries({color:'#0000ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false})
+    ];
+  }
+  const C = B.C, n = B.n, times = B0.map(b => b.time);
+  const ema = (len) => {
+    const k = 2 / (len + 1); let e = C[0]; const out = [];
+    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push(e); }
+    return out;
+  };
+  const yellow = ema(50), green = ema(50), vwap = ema(20);
+  goldSeries[0].setData(yellow.map((v,i) => ({time:times[i], value:v})));
+  goldSeries[1].setData(green.map((v,i) => ({time:times[i], value:v})));
+  goldSeries[2].setData(vwap.map((v,i) => ({time:times[i], value:v})));
+}
+$('bGold').onclick = () => { goldOn = !goldOn; $('bGold').classList.toggle('on', goldOn); updGold(); };
