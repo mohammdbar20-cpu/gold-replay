@@ -2559,13 +2559,10 @@ function gKey(T, tf) {
   if (T === tf) return null;
   if (T === "D1") return (t) => tday(t).d;
   if (T === "W") return (t) => Math.floor((tday(t).d - 4) / 7);
-  if (T === "H4") return (t) => {
-    const d = tday(t).d, m = ((Math.floor((t + nyOff(t)) / 60) - 17 * 60) % 1440 + 1440) % 1440;
-    return d * 8 + Math.floor(m / 240);
-  };
+  if (T === "H4") return (t) => Math.floor((t - 7200) / 14400);
   return (t) => Math.floor(t / s);
 }
-function gProg(F, tf, T, kind, anchorIntraday) {
+function gProg(F, tf, T, kind, anchorIntraday, prog) {
   const n = F.n, kf = gKey(T, tf), K = 2 / (GOLD.len + 1), sec = TFS[tf];
   const bk = new Int32Array(n);
   let nb = -1, pk = null;
@@ -2593,6 +2590,7 @@ function gProg(F, tf, T, kind, anchorIntraday) {
       Vc[j] = e;
     }
   } else {
+    const pS = new Float64Array(nb), pW = new Float64Array(nb);
     let s = 0, w = 0, ses = null;
     for (let j = 0; j < nb; j++) {
       const d = anchorIntraday ? tday(F.t[first[j]]).d : j;
@@ -2607,10 +2605,22 @@ function gProg(F, tf, T, kind, anchorIntraday) {
         if (F.l[q] < L) L = F.l[q];
         v += anchorIntraday ? volAt(F.t[q], sec) : 1;
       }
+      pS[j] = s;
+      pW[j] = w;
       s += (H + L + F.c[last[j]]) / 3 * v;
       w += v;
       Vc[j] = w ? s / w : null;
     }
+    if (prog) return (i, hh, ll, cc) => {
+      const j = bk[i];
+      let H = hh, L = ll, v = anchorIntraday ? volAt(F.t[i], sec) : 1;
+      for (let q = first[j]; q < i; q++) {
+        if (F.h[q] > H) H = F.h[q];
+        if (F.l[q] < L) L = F.l[q];
+        v += anchorIntraday ? volAt(F.t[q], sec) : 1;
+      }
+      return (pS[j] + (H + L + cc) / 3 * v) / (pW[j] + v);
+    };
   }
   return (i, hh, ll, cc, cur, forming) => {
     const j = bk[i];
@@ -2623,7 +2633,7 @@ async function goldCompute() {
   const R = memo(F, "gold", async () => {
     await loadM15V();
     const n = F.n, yT = GOLD.htf[tf], vT = GOLD.vtf[tf];
-    const fy = gProg(F, tf, yT, "ema"), fv = gProg(F, tf, vT, "vw", vT === "H1" || vT === "H4");
+    const fy = gProg(F, tf, yT, "ema"), fv = gProg(F, tf, vT, "vw", vT === "H1" || vT === "H4", tf === "M15");
     let fg;
     if (tf === "D1") {
       const X2 = await load("H4.csv"), E = pEma(X2.c, X2.n), e4 = Float64Array.from(X2.t, (x) => x + 14400);

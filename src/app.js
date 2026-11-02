@@ -625,22 +625,23 @@ async function goldFull(tf){const key=tf+'#'+LIVE.ver;if(goldFull.k===key)return
  let F;if(MAN.tf[tf].months){const ms=MAN.tf[tf].months.filter(m=>m>=GOLD_FROM[tf]);F=cat(await Promise.all(ms.map(m=>load(tf+'m/'+m+'.csv'))))}else F=await load(tf+'.csv');
  goldFull.k=key;goldFull.v=F;return F}
 function gKey(T,tf){const s=TFS[T];if(T===tf)return null;if(T==='D1')return t=>tday(t).d;if(T==='W')return t=>Math.floor((tday(t).d-4)/7);
- if(T==='H4')return t=>{const d=tday(t).d,m=((Math.floor((t+nyOff(t))/60)-17*60)%1440+1440)%1440;return d*8+Math.floor(m/240)};return t=>Math.floor(t/s)}
+ if(T==='H4')return t=>Math.floor((t-7200)/14400);return t=>Math.floor(t/s)}
 // returns function val(i, h_i, l_i, c_i) for chart bar i of F (h/l/c may be the forming values)
-function gProg(F,tf,T,kind,anchorIntraday){const n=F.n,kf=gKey(T,tf),K=2/(GOLD.len+1),sec=TFS[tf];
+function gProg(F,tf,T,kind,anchorIntraday,prog){const n=F.n,kf=gKey(T,tf),K=2/(GOLD.len+1),sec=TFS[tf];
  const bk=new Int32Array(n);let nb=-1,pk=null;for(let i=0;i<n;i++){const q=kf?kf(F.t[i]):i;if(q!==pk){nb++;pk=q}bk[i]=nb}nb++;
  const first=new Int32Array(nb),last=new Int32Array(nb);for(let i=n-1;i>=0;i--)first[bk[i]]=i;for(let i=0;i<n;i++)last[bk[i]]=i;
  const Vc=new Array(nb).fill(null);// value of HTF bar j once confirmed
  if(kind==='ema'){let e=null,s=0;for(let j=0;j<nb;j++){const cl=F.c[last[j]];if(j<GOLD.len){s+=cl;if(j===GOLD.len-1)e=s/GOLD.len}else e=K*cl+(1-K)*e;Vc[j]=e}}
- else{let s=0,w=0,ses=null;for(let j=0;j<nb;j++){const d=anchorIntraday?tday(F.t[first[j]]).d:j;if(d!==ses){ses=d;s=0;w=0}
+ else{const pS=new Float64Array(nb),pW=new Float64Array(nb);let s=0,w=0,ses=null;for(let j=0;j<nb;j++){const d=anchorIntraday?tday(F.t[first[j]]).d:j;if(d!==ses){ses=d;s=0;w=0}
   let H=-1e18,L=1e18,v=0;for(let q=first[j];q<=last[j];q++){if(F.h[q]>H)H=F.h[q];if(F.l[q]<L)L=F.l[q];v+=anchorIntraday?volAt(F.t[q],sec):1}
-  s+=(H+L+F.c[last[j]])/3*v;w+=v;Vc[j]=w?s/w:null}}
+  pS[j]=s;pW[j]=w;s+=(H+L+F.c[last[j]])/3*v;w+=v;Vc[j]=w?s/w:null}
+  if(prog)return (i,hh,ll,cc)=>{const j=bk[i];let H=hh,L=ll,v=anchorIntraday?volAt(F.t[i],sec):1;for(let q=first[j];q<i;q++){if(F.h[q]>H)H=F.h[q];if(F.l[q]<L)L=F.l[q];v+=anchorIntraday?volAt(F.t[q],sec):1}return (pS[j]+(H+L+cc)/3*v)/(pW[j]+v)}}
  // closed on bar i if the next bar belongs to another HTF bucket (the very last data bar = still forming)
  return (i,hh,ll,cc,cur,forming)=>{const j=bk[i];const closed=!forming&&i<n-1&&bk[i+1]!==j;return closed?Vc[j]:(j>0?Vc[j-1]:null)}}
 async function goldCompute(){
  const tf=S.tf,part=B.n>B.nDone,F=await goldFull(tf);
  const R=memo(F,'gold',async()=>{await loadM15V();const n=F.n,yT=GOLD.htf[tf],vT=GOLD.vtf[tf];
-  const fy=gProg(F,tf,yT,'ema'),fv=gProg(F,tf,vT,'vw',vT==='H1'||vT==='H4');let fg;
+  const fy=gProg(F,tf,yT,'ema'),fv=gProg(F,tf,vT,'vw',vT==='H1'||vT==='H4',tf==='M15');let fg;
   if(tf==='D1'){const X=await load('H4.csv'),E=pEma(X.c,X.n),e4=Float64Array.from(X.t,x=>x+14400);// lower TF: last 4h value inside the day so far
    fg=(i,hh,ll,cc,cur)=>{const end=cur!=null?cur+60:tday(F.t[i]).end;let j=bs(e4,end,X.n);return j>=0?E[j]:null}}
   else fg=gProg(F,tf,'H4','ema');
