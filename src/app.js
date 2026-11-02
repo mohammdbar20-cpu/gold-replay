@@ -236,6 +236,7 @@ function draw(){if(document.hidden)return setTimeout(()=>requestAnimationFrame(d
  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);if(!B)return requestAnimationFrame(draw);
  const pw=w-60;cx.save();cx.beginPath();cx.rect(0,0,pw,h);cx.clip();
  const xr=XI(B.n-1)+20,sm=B.smc;
+ drawGold();
  const box=(x1,y1,x2,y2,f)=>{if(x1==null||y1==null||y2==null)return;cx.fillStyle=f;cx.fillRect(x1,Math.min(y1,y2),x2-x1,Math.abs(y2-y1))};
  const txt=(s,x,y,c)=>{cx.fillStyle=c;cx.font='11px sans-serif';cx.fillText(s,x,y)};
  if(S.smc.on&&sm){
@@ -549,38 +550,74 @@ $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=n
 
 
 
-// ========== Gold Indicator ==========
-let goldSeries = null;
-function updGold() {
-  const on = S.gold && S.gold.on;
-  if (!B || !on) {
-    if (goldSeries) { goldSeries.forEach(s => chart.removeSeries(s)); goldSeries = null; }
-    return;
-  }
-  if (!goldSeries) {
-    goldSeries = [
-      chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
-      chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
-      chart.addLineSeries({color:'#4488ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false})
-    ];
-  }
-  if (!B0 || !B.C) return;
-  const n = B.n, C = B.C;
-  const calcEma = (len) => {
-    const k = 2 / (len + 1); let e = C[0]; const out = [];
-    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push({time: B0[i].time, value: e}); }
-    return out;
-  };
-  goldSeries[0].setData(calcEma(50));
-  goldSeries[1].setData(calcEma(50));
-  goldSeries[2].setData(calcEma(20));
-}
-const bGold = document.getElementById('bGold');
-if (bGold) {
-  bGold.onclick = () => {
-    if (!S.gold) S.gold = {on: false};
-    S.gold.on = !S.gold.on;
-    bGold.classList.toggle('on', S.gold.on);
-    updGold();
-  };
-}
+// ========== Gold Lines + Cloud + VWAP + Signals (port of the user's Pine v5 script) ==========
+// Replay-safe: every value at chart bar i uses only data up to that bar (the in-progress higher-TF bar is
+// rebuilt from the chart bars revealed so far, like request.security without lookahead on realtime bars).
+// The site's data has no volume -> VWAP uses equal weight per vwapTF bar (approximation).
+const GOLD={len:50,minAtr:0.4,htf:{M5:'M15',M15:'H1',H1:'H4',H4:'D1',D1:'D1'},vtf:{M5:'H1',M15:'H4',H1:'D1',H4:'W',D1:'W'},
+ col:{y:'#ff9800',g:'#4caf50',v:'#2962ff',buy:'#00e676',sell:'#ff5252',cg:'rgba(76,175,80,0.15)',cr:'rgba(255,82,82,0.15)'}};
+let goldSer=null,goldRes=null,goldG=0;const goldE=new WeakMap();
+function goldEmaArr(F){let E=goldE.get(F);if(E)return E;const k=2/(GOLD.len+1);E=new Float64Array(F.n);let e=F.c[0];for(let i=0;i<F.n;i++){e=i?F.c[i]*k+e*(1-k):F.c[i];E[i]=e}goldE.set(F,E);return E}
+// value of EMA(close) on the higher TF bar that is in progress at time tau, whose running close is c
+function goldHtfVal(F,E,tau,c){const j=bs(F.t,tau,F.n);if(j<GOLD.len)return null;const k=2/(GOLD.len+1);return E[j-1]*(1-k)+c*k}
+function goldAgg(t,c,n,sec){const T=[],Cc=[];for(let i=0;i<n;i++){const b=Math.floor(t[i]/sec)*sec;if(T.length&&T[T.length-1]===b)Cc[Cc.length-1]=c[i];else{T.push(b);Cc.push(c[i])}}return {t:T,c:Cc,n:T.length}}
+async function goldCompute(){
+ const tf=S.tf,A=B.A,k=B.k,part=B.n>B.nDone;
+ // full chart-TF history up to the replay cursor (closed bars from file + the partial bar)
+ const n=k+(part?1:0),t=new Float64Array(n),h=new Float64Array(n),l=new Float64Array(n),c=new Float64Array(n);
+ t.set(A.t.subarray(0,k));h.set(A.h.subarray(0,k));l.set(A.l.subarray(0,k));c.set(A.c.subarray(0,k));
+ if(part){const q=B.n-1;t[n-1]=B.U[q];h[n-1]=B.H[q];l[n-1]=B.L[q];c[n-1]=B.C[q]}
+ const H4=await load('H4.csv'),D1=await load('D1.csv');
+ const fileOf=x=>x==='H4'?H4:x==='D1'?D1:x===tf?{t:A.t,c:A.c,n:A.n}:null;
+ const yT=GOLD.htf[tf];let YF=fileOf(yT);if(!YF)YF=goldAgg(A.t.subarray(0,k),A.c.subarray(0,k),k,TFS[yT]);
+ const YE=goldEmaArr(YF),GE=goldEmaArr(H4);
+ const end=i=>i+1<n?t[i+1]-1:S.cur; // reference time for a lower-TF request (4h on D1 chart)
+ const Y=new Array(n),G=new Array(n),V=new Array(n),ATR=new Array(n);
+ const vT=GOLD.vtf[tf];
+ const wk=x=>{const L=x+off(x)+7200;return Math.floor((L-345600)/604800)};// week starts Monday (Sunday-evening open folded in)
+ let ses=null,vs=0,vc=0,curJ=-1,rh=0,rl=0,ar=null;
+ for(let i=0;i<n;i++){
+  Y[i]=goldHtfVal(YF,YE,t[i],c[i]);
+  G[i]=goldHtfVal(H4,GE,tf==='D1'?end(i):t[i],c[i]);
+  // VWAP(hlc3) on vwapTF, session(day/week)-anchored, in-progress vwapTF bar from revealed chart bars
+  if(vT==='H4'||vT==='H1'){const dj=bs(D1.t,t[i],D1.n),sk=dj;const sec=TFS[vT];
+   const F=vT==='H4'?H4:null;const j=F?bs(F.t,t[i],F.n):Math.floor(t[i]/sec);
+   if(sk!==ses){ses=sk;vs=0;vc=0;curJ=-1}
+   if(j!==curJ){if(curJ!==-1){vs+=(rh+rl+c[i-1])/3;vc++}curJ=j;rh=h[i];rl=l[i]}else{rh=Math.max(rh,h[i]);rl=Math.min(rl,l[i])}
+   V[i]=(vs+(rh+rl+c[i])/3)/(vc+1);
+  }else{const sk=vT==='D1'?bs(D1.t,t[i],D1.n):wk(t[i]);
+   if(sk!==ses){ses=sk;rh=h[i];rl=l[i]}else{rh=Math.max(rh,h[i]);rl=Math.min(rl,l[i])}
+   V[i]=(rh+rl+c[i])/3;}
+  const tr=i?Math.max(h[i]-l[i],Math.abs(h[i]-c[i-1]),Math.abs(l[i]-c[i-1])):h[i]-l[i];
+  if(i<14){ar=(ar||0)+tr/14;ATR[i]=i===13?ar:null}else{ar=(ar*13+tr)/14;ATR[i]=ar}
+ }
+ const is15=tf==='M15',is4=tf==='H4',sig=new Int8Array(n);let last=0,pa=false,pb=false;
+ const nc=part?n-1:n; // barstate.isconfirmed: no signal on the in-progress bar
+ for(let i=0;i<nc;i++){const y=Y[i],g=G[i],v=V[i];if(y==null||g==null||v==null||i<3||Y[i-3]==null||G[i-3]==null||ATR[i]==null){pa=pb=false;continue}
+  const ys=y-Y[i-3],gs=g-G[i-3],same=(ys>0&&gs>0)||(ys<0&&gs<0),wide=Math.abs(y-g)>ATR[i]*GOLD.minAtr,ok=same&&wide;
+  const ab=is15?(l[i]>y&&l[i]>g&&l[i]>v):(c[i]>y&&c[i]>g&&c[i]>v),be=is15?(h[i]<y&&h[i]<g&&h[i]<v):(c[i]<y&&c[i]<g&&c[i]<v);
+  const buy=ab&&!pa&&last!==1&&ok,sell=be&&!pb&&last!==-1&&ok;
+  if(buy){last=1;sig[i]=1}if(sell){last=-1;sig[i]=-1}pa=ab;pb=be;}
+ const o=n-B.n;// offset of the visible window inside the full arrays
+ const R={Y:[],G:[],V:[],sig:[],up:[],is4};
+ for(let i=0;i<B.n;i++){const q=i+o;R.Y.push(Y[q]);R.G.push(G[q]);R.V.push(V[q]);R.sig.push(sig[q]);}
+ return R;}
+async function updGold(){
+ const on=S.gold&&S.gold.on;const bt=$('bGold');if(bt)bt.classList.toggle('on',!!on);
+ if(!B||!on){if(goldSer)goldSer.forEach(x=>x.setData([]));goldRes=null;dirty++;return}
+ if(!goldSer)goldSer=[[GOLD.col.y,2],[GOLD.col.g,2],[GOLD.col.v,1]].map(([color,lineWidth])=>chart.addLineSeries({color,lineWidth,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false}));
+ const g=++goldG,b=B;let R;try{R=await goldCompute()}catch(e){console.warn('gold',e);return}
+ if(g!==goldG||b!==B||!(S.gold&&S.gold.on))return;
+ [R.Y,R.G,R.V].forEach((a,j)=>goldSer[j].setData(a.map((v,i)=>v==null?{time:B0[i].time}:{time:B0[i].time,value:v})));
+ goldRes=R;dirty++;}
+// cloud + signal triangles on the overlay canvas (called from draw())
+function drawGold(){const R=goldRes;if(!R||!S.gold||!S.gold.on||!B||R.Y.length!==B.n)return;
+ for(let i=0;i<B.n-1;i++){const y0=R.Y[i],g0=R.G[i],y1=R.Y[i+1],g1=R.G[i+1];if(y0==null||g0==null||y1==null||g1==null)continue;
+  const x0=XI(i),x1=XI(i+1);if(x0==null||x1==null)continue;const up=y0>g0;
+  cx.fillStyle=(R.is4?!up:up)?GOLD.col.cg:GOLD.col.cr;cx.beginPath();cx.moveTo(x0,Y(y0));cx.lineTo(x1,Y(y1));cx.lineTo(x1,Y(g1));cx.lineTo(x0,Y(g0));cx.closePath();cx.fill();}
+ const sp=chart.timeScale().options().barSpacing,sz=Math.max(4,Math.min(8,sp*0.8));
+ for(let i=0;i<B.n;i++){const s=R.sig[i];if(!s)continue;const x=XI(i);if(x==null)continue;
+  if(s>0){const y=Y(B.L[i])+6;cx.fillStyle=GOLD.col.buy;cx.beginPath();cx.moveTo(x,y);cx.lineTo(x-sz,y+sz*1.6);cx.lineTo(x+sz,y+sz*1.6);cx.closePath();cx.fill()}
+  else{const y=Y(B.H[i])-6;cx.fillStyle=GOLD.col.sell;cx.beginPath();cx.moveTo(x,y);cx.lineTo(x-sz,y-sz*1.6);cx.lineTo(x+sz,y-sz*1.6);cx.closePath();cx.fill()}}}
+$('bGold').onclick=()=>{S.gold=S.gold||{on:false};S.gold.on=!S.gold.on;save();updGold()};
+window.GR.gold=()=>goldRes;
