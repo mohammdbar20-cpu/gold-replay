@@ -48,19 +48,120 @@ async function fetchRetry(u, n = 4) {
     await new Promise((q) => setTimeout(q, 400 * (i + 1)));
   }
 }
-async function load(path) {
+async function rawLoad(path) {
   if (!cache[path]) {
     const big = path.startsWith("m1/"), Lq = big ? LRU : LRU.s || (LRU.s = []);
     Lq.push(path);
     while (Lq.length > (big ? 10 : 160)) {
       delete cache[Lq.shift()];
     }
-    cache[path] = fetchRetry("data/" + path).then(dec);
+    cache[path] = fetchRetry("data/" + path).then(dec).catch((e) => {
+      if (LIVE.n && / 404$/.test(e.message)) return { t: new Float64Array(0), o: new Float64Array(0), h: new Float64Array(0), l: new Float64Array(0), c: new Float64Array(0), n: 0 };
+      throw e;
+    });
     cache[path].catch(() => {
       delete cache[path];
     });
   }
   return cache[path];
+}
+const LIVE = { n: 0, t: [], o: [], h: [], l: [], c: [], ver: 0, basis: 0, on: false, timer: null };
+const liveC = {};
+function nyBucket(t, sec) {
+  const L = t + nyOff(t) + 7 * 3600, b = Math.floor(L / sec) * sec;
+  return b - 7 * 3600 - nyOff(t);
+}
+function liveBucket(path) {
+  const m = path.match(/^(m1|M5m|M15m|H1m)\/(\d{4}-\d{2})\.csv$/);
+  let sec, ny = false, mon = null;
+  if (m) {
+    sec = { m1: 60, M5m: 300, M15m: 900, H1m: 3600 }[m[1]];
+    mon = m[2];
+  } else if (path === "H4.csv") {
+    sec = 14400;
+    ny = true;
+  } else if (path === "D1.csv") {
+    sec = 86400;
+    ny = true;
+  } else return null;
+  return { sec, ny, mon };
+}
+async function load(path) {
+  const base = await rawLoad(path);
+  const bk = LIVE.n ? liveBucket(path) : null;
+  if (!bk) return base;
+  const key = path + "#" + LIVE.ver;
+  if (liveC[path] && liveC[path].key === key) return liveC[path].v;
+  const T = Array.from(base.t), O = Array.from(base.o), H = Array.from(base.h), L = Array.from(base.l), C = Array.from(base.c);
+  const lastT = T.length ? T[T.length - 1] : -1;
+  for (let i = 0; i < LIVE.n; i++) {
+    const t = LIVE.t[i];
+    if (bk.mon && ym(t) !== bk.mon) continue;
+    const b = bk.sec === 86400 ? tday(t).end - 86400 : bk.ny ? nyBucket(t, bk.sec) : Math.floor(t / bk.sec) * bk.sec;
+    if (b < lastT) continue;
+    const q = T.length - 1;
+    if (q >= 0 && T[q] === b) {
+      H[q] = Math.max(H[q], LIVE.h[i]);
+      L[q] = Math.min(L[q], LIVE.l[i]);
+      C[q] = LIVE.c[i];
+    } else if (b > lastT || q < 0) {
+      T.push(b);
+      O.push(LIVE.o[i]);
+      H.push(LIVE.h[i]);
+      L.push(LIVE.l[i]);
+      C.push(LIVE.c[i]);
+    }
+  }
+  const v = { t: Float64Array.from(T), o: Float64Array.from(O), h: Float64Array.from(H), l: Float64Array.from(L), c: Float64Array.from(C), n: T.length };
+  liveC[path] = { key, v };
+  return v;
+}
+async function liveFetch() {
+  const st0 = Date.parse(MAN.last0 || MAN.last) / 1e3 + 60;
+  let from = LIVE.n ? LIVE.t[LIVE.n - 1] : st0;
+  try {
+    const g = await (await fetch("https://api.gold-api.com/price/XAU")).json();
+    if (g && g.price) LIVE.spot = +g.price;
+  } catch (e) {
+  }
+  const rows = [];
+  for (let k = 0; k < 60; k++) {
+    const u = "https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=1m&limit=1000&startTime=" + from * 1e3;
+    const r = await (await fetch(u)).json();
+    if (!Array.isArray(r) || !r.length) break;
+    rows.push(...r);
+    from = r[r.length - 1][0] / 1e3 + 60;
+    if (r.length < 1e3) break;
+  }
+  if (!rows.length && !LIVE.n) throw Error("no live data");
+  if (rows.length && LIVE.spot) LIVE.basis = LIVE.spot - +rows[rows.length - 1][4];
+  for (const r of rows) {
+    const t = r[0] / 1e3;
+    while (LIVE.n && LIVE.t[LIVE.n - 1] >= t) {
+      for (const a of "tohlc") LIVE[a].pop();
+      LIVE.n--;
+    }
+    if (t < st0) continue;
+    LIVE.t.push(t);
+    for (const [a, j] of [["o", 1], ["h", 2], ["l", 3], ["c", 4]]) LIVE[a].push(Math.round((+r[j] + LIVE.basis) * 100) / 100);
+    LIVE.n++;
+  }
+  LIVE.ver++;
+  cache.__wk = null;
+  if (!MAN.last0) MAN.last0 = MAN.last;
+  const lt = LIVE.t[LIVE.n - 1];
+  MAN.last = new Date(lt * 1e3).toISOString();
+  const addM = (list) => {
+    for (let i = 0; i < LIVE.n; i += 60) {
+      const mk2 = ym(LIVE.t[i]);
+      if (!list.includes(mk2)) list.push(mk2);
+    }
+    const mk = ym(lt);
+    if (!list.includes(mk)) list.push(mk);
+  };
+  addM(MAN.m1);
+  for (const tf of ["M5", "M15", "H1"]) if (MAN.tf[tf] && MAN.tf[tf].months) addM(MAN.tf[tf].months);
+  return lt;
 }
 function cat(arr) {
   arr = arr.filter(Boolean);
@@ -2279,37 +2380,139 @@ const GOLD = {
   col: { y: "#ff9800", g: "#4caf50", v: "#2962ff", buy: "#00e676", sell: "#ff5252", cg: "rgba(76,175,80,0.15)", cr: "rgba(255,82,82,0.15)" }
 };
 let goldSer = null, goldRes = null, goldG = 0;
-const goldE = /* @__PURE__ */ new WeakMap();
-function goldEmaArr(F) {
-  let E = goldE.get(F);
-  if (E) return E;
-  const k = 2 / (GOLD.len + 1);
-  E = new Float64Array(F.n);
-  let e = F.c[0];
-  for (let i = 0; i < F.n; i++) {
-    e = i ? F.c[i] * k + e * (1 - k) : F.c[i];
+const goldC = /* @__PURE__ */ new WeakMap();
+const nyF = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+function nyOff(t) {
+  const p = {};
+  nyF.formatToParts(new Date(t * 1e3)).forEach((x) => p[x.type] = x.value);
+  return Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute) / 1e3 - Math.floor(t / 60) * 60;
+}
+function tday(t) {
+  const L = t + nyOff(t) + 7 * 3600, d = Math.floor(L / 86400), e0 = d * 86400 + 17 * 3600;
+  return { d, end: e0 - nyOff(e0 - 5 * 3600) };
+}
+function pEma(c, n) {
+  const k = 2 / (GOLD.len + 1), E = new Array(n).fill(null);
+  if (n < GOLD.len) return E;
+  let s = 0;
+  for (let i = 0; i < GOLD.len; i++) s += c[i];
+  let e = s / GOLD.len;
+  E[GOLD.len - 1] = e;
+  for (let i = GOLD.len; i < n; i++) {
+    e = k * c[i] + (1 - k) * e;
     E[i] = e;
   }
-  goldE.set(F, E);
   return E;
 }
-function goldHtfVal(F, E, tau, c) {
-  const j = bs(F.t, tau, F.n);
-  if (j < GOLD.len) return null;
-  const k = 2 / (GOLD.len + 1);
-  return E[j - 1] * (1 - k) + c * k;
+function memo(o, key, f) {
+  let m = goldC.get(o);
+  if (!m) {
+    m = {};
+    goldC.set(o, m);
+  }
+  return m[key] || (m[key] = f());
 }
-function goldAgg(t, c, n, sec) {
-  const T = [], Cc = [];
+let H4V = null;
+async function loadH4V() {
+  if (H4V) return H4V;
+  try {
+    const L = (await fetchRetry("data/H4v.csv")).split("\n").filter(Boolean);
+    let t = +L[0];
+    const M = /* @__PURE__ */ new Map();
+    for (let i = 1; i < L.length; i++) {
+      const r = L[i].split(",");
+      t += +r[0];
+      M.set(t * 60, +r[1]);
+    }
+    H4V = M;
+  } catch (e) {
+    H4V = /* @__PURE__ */ new Map();
+  }
+  return H4V;
+}
+function htfH4(F) {
+  return memo(F, "b", () => ({ t: F.t, c: F.c, h: F.h, l: F.l, n: F.n, e: Float64Array.from(F.t, (x) => x + 14400) }));
+}
+function htfD(F) {
+  return memo(F, "b", () => ({ t: F.t, c: F.c, h: F.h, l: F.l, n: F.n, e: Float64Array.from(F.t, (x) => tday(x).end) }));
+}
+function htfW(F) {
+  return memo(F, "w", () => {
+    const T = [], E = [], C = [], H = [], L = [];
+    let wk = null;
+    for (let i = 0; i < F.n; i++) {
+      const d = tday(F.t[i]), w = Math.floor((d.d - 4) / 7);
+      if (w !== wk) {
+        wk = w;
+        T.push(F.t[i]);
+        E.push(d.end);
+        C.push(F.c[i]);
+        H.push(F.h[i]);
+        L.push(F.l[i]);
+      } else {
+        const q = T.length - 1;
+        E[q] = d.end;
+        C[q] = F.c[i];
+        H[q] = Math.max(H[q], F.h[i]);
+        L[q] = Math.min(L[q], F.l[i]);
+      }
+    }
+    return { t: T, e: E, c: C, h: H, l: L, n: T.length };
+  });
+}
+function htfAgg(t, h, l, c, n, sec) {
+  const T = [], E = [], C = [], H = [], L = [];
   for (let i = 0; i < n; i++) {
     const b = Math.floor(t[i] / sec) * sec;
-    if (T.length && T[T.length - 1] === b) Cc[Cc.length - 1] = c[i];
-    else {
+    const q = T.length - 1;
+    if (q >= 0 && T[q] === b) {
+      C[q] = c[i];
+      H[q] = Math.max(H[q], h[i]);
+      L[q] = Math.min(L[q], l[i]);
+    } else {
       T.push(b);
-      Cc.push(c[i]);
+      E.push(b + sec);
+      C.push(c[i]);
+      H.push(h[i]);
+      L.push(l[i]);
     }
   }
-  return { t: T, c: Cc, n: T.length };
+  return { t: T, e: E, c: C, h: H, l: L, n: T.length };
+}
+function vwapSeries(X2, intraday, V) {
+  const out = new Array(X2.n);
+  let ses = null, pv = 0, vv = 0;
+  for (let j = 0; j < X2.n; j++) {
+    const src = (X2.h[j] + X2.l[j] + X2.c[j]) / 3;
+    if (!intraday) {
+      out[j] = src;
+      continue;
+    }
+    const sd = tday(X2.t[j]).d;
+    if (sd !== ses) {
+      ses = sd;
+      pv = 0;
+      vv = 0;
+    }
+    let v = V ? V.get(X2.t[j]) : null;
+    if (v == null) v = 1;
+    pv += src * v;
+    vv += v;
+    out[j] = vv ? pv / vv : null;
+  }
+  return out;
+}
+function secHigher(X2, S2, ti, endi, conf) {
+  const j = bs(X2.t, ti, X2.n);
+  if (j < 0) return null;
+  const idx = conf && endi >= X2.e[j] ? j : j - 1;
+  return idx >= 0 ? S2[idx] : null;
+}
+function secLower(X2, S2, endi, conf, cur) {
+  let j = bs(X2.t, (conf ? endi : cur) - 1, X2.n);
+  if (j < 0) return null;
+  if (!conf && X2.e[j] > cur + 60) j--;
+  return j >= 0 ? S2[j] : null;
 }
 async function goldCompute() {
   const tf = S.tf, A = B.A, k = B.k, part = B.n > B.nDone;
@@ -2325,79 +2528,43 @@ async function goldCompute() {
     l[n - 1] = B.L[q];
     c[n - 1] = B.C[q];
   }
-  const H4 = await load("H4.csv"), D1 = await load("D1.csv");
-  const fileOf = (x) => x === "H4" ? H4 : x === "D1" ? D1 : x === tf ? { t: A.t, c: A.c, n: A.n } : null;
-  const yT = GOLD.htf[tf];
-  let YF = fileOf(yT);
-  if (!YF) YF = goldAgg(A.t.subarray(0, k), A.c.subarray(0, k), k, TFS[yT]);
-  const YE = goldEmaArr(YF), GE = goldEmaArr(H4);
-  const end = (i) => i + 1 < n ? t[i + 1] - 1 : S.cur;
-  const Y2 = new Array(n), G = new Array(n), V = new Array(n), ATR = new Array(n);
-  const vT = GOLD.vtf[tf];
-  const wk = (x) => {
-    const L = x + off(x) + 7200;
-    return Math.floor((L - 345600) / 604800);
-  };
-  let ses = null, vs = 0, vc = 0, curJ = -1, rh = 0, rl = 0, ar = null;
+  const F4 = await load("H4.csv"), FD = await load("D1.csv"), V4 = await loadH4V();
+  const X4 = htfH4(F4), XD = htfD(FD), XW = htfW(FD);
+  const Xof = (x) => x === "H4" ? X4 : x === "D1" ? XD : x === "W" ? XW : htfAgg(A.t, A.h, A.l, A.c, A.n, TFS[x]);
+  const yT = GOLD.htf[tf], vT = GOLD.vtf[tf], XY = Xof(yT), XV = Xof(vT);
+  const SY = memo(XY, "ema", () => pEma(XY.c, XY.n)), SG = memo(X4, "ema", () => pEma(X4.c, X4.n)), SV = memo(XV, "vw", () => vwapSeries(XV, vT === "H4" || vT === "H1", vT === "H4" ? V4 : null));
+  const endOf = tf === "D1" ? (x) => tday(x).end : (x) => x + TFS[tf];
+  const Y2 = new Array(n), G = new Array(n), V = new Array(n), ATR = new Array(n).fill(null);
+  let ar = 0;
   for (let i = 0; i < n; i++) {
-    Y2[i] = goldHtfVal(YF, YE, t[i], c[i]);
-    G[i] = goldHtfVal(H4, GE, tf === "D1" ? end(i) : t[i], c[i]);
-    if (vT === "H4" || vT === "H1") {
-      const dj = bs(D1.t, t[i], D1.n), sk = dj;
-      const sec = TFS[vT];
-      const F = vT === "H4" ? H4 : null;
-      const j = F ? bs(F.t, t[i], F.n) : Math.floor(t[i] / sec);
-      if (sk !== ses) {
-        ses = sk;
-        vs = 0;
-        vc = 0;
-        curJ = -1;
-      }
-      if (j !== curJ) {
-        if (curJ !== -1) {
-          vs += (rh + rl + c[i - 1]) / 3;
-          vc++;
-        }
-        curJ = j;
-        rh = h[i];
-        rl = l[i];
-      } else {
-        rh = Math.max(rh, h[i]);
-        rl = Math.min(rl, l[i]);
-      }
-      V[i] = (vs + (rh + rl + c[i]) / 3) / (vc + 1);
-    } else {
-      const sk = vT === "D1" ? bs(D1.t, t[i], D1.n) : wk(t[i]);
-      if (sk !== ses) {
-        ses = sk;
-        rh = h[i];
-        rl = l[i];
-      } else {
-        rh = Math.max(rh, h[i]);
-        rl = Math.min(rl, l[i]);
-      }
-      V[i] = (rh + rl + c[i]) / 3;
-    }
+    const conf = !(part && i === n - 1), e = endOf(t[i]);
+    Y2[i] = secHigher(XY, SY, t[i], e, conf);
+    G[i] = tf === "D1" ? secLower(X4, SG, e, conf, S.cur) : secHigher(X4, SG, t[i], e, conf);
+    V[i] = secHigher(XV, SV, t[i], e, conf);
     const tr2 = i ? Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1])) : h[i] - l[i];
     if (i < 14) {
-      ar = (ar || 0) + tr2 / 14;
-      ATR[i] = i === 13 ? ar : null;
+      ar += tr2;
+      if (i === 13) {
+        ar /= 14;
+        ATR[i] = ar;
+      }
     } else {
       ar = (ar * 13 + tr2) / 14;
       ATR[i] = ar;
     }
   }
-  const is15 = tf === "M15", is4 = tf === "H4", sig = new Int8Array(n);
+  const is15 = tf === "M15", sig = new Int8Array(n);
   let last = 0, pa = false, pb = false;
   const nc = part ? n - 1 : n;
   for (let i = 0; i < nc; i++) {
     const y = Y2[i], g = G[i], v = V[i];
-    if (y == null || g == null || v == null || i < 3 || Y2[i - 3] == null || G[i - 3] == null || ATR[i] == null) {
-      pa = pb = false;
-      continue;
+    const ab = y != null && g != null && v != null && (is15 ? l[i] > y && l[i] > g && l[i] > v : c[i] > y && c[i] > g && c[i] > v);
+    const be = y != null && g != null && v != null && (is15 ? h[i] < y && h[i] < g && h[i] < v : c[i] < y && c[i] < g && c[i] < v);
+    let ok = false;
+    if (i >= 3 && y != null && g != null && Y2[i - 3] != null && G[i - 3] != null && ATR[i] != null) {
+      const ys = y - Y2[i - 3], gs = g - G[i - 3];
+      ok = (ys > 0 && gs > 0 || ys < 0 && gs < 0) && Math.abs(y - g) > ATR[i] * GOLD.minAtr;
     }
-    const ys = y - Y2[i - 3], gs = g - G[i - 3], same = ys > 0 && gs > 0 || ys < 0 && gs < 0, wide = Math.abs(y - g) > ATR[i] * GOLD.minAtr, ok = same && wide;
-    const ab = is15 ? l[i] > y && l[i] > g && l[i] > v : c[i] > y && c[i] > g && c[i] > v, be = is15 ? h[i] < y && h[i] < g && h[i] < v : c[i] < y && c[i] < g && c[i] < v;
     const buy = ab && !pa && last !== 1 && ok, sell = be && !pb && last !== -1 && ok;
     if (buy) {
       last = 1;
@@ -2410,8 +2577,7 @@ async function goldCompute() {
     pa = ab;
     pb = be;
   }
-  const o = n - B.n;
-  const R = { Y: [], G: [], V: [], sig: [], up: [], is4 };
+  const o = n - B.n, R = { Y: [], G: [], V: [], sig: [], is4: tf === "H4" };
   for (let i = 0; i < B.n; i++) {
     const q = i + o;
     R.Y.push(Y2[q]);
@@ -2497,6 +2663,40 @@ $("bGold").onclick = () => {
   updGold();
 };
 window.GR.gold = () => goldRes;
+async function liveTick(first) {
+  if (!LIVE.on || busy) return;
+  try {
+    const lt = await liveFetch();
+    if (!LIVE.on) return;
+    if (lt > S.cur) {
+      busy = true;
+      try {
+        await advance(lt);
+      } finally {
+        busy = false;
+      }
+    } else await render();
+    status("\u{1F534} \u0645\u0628\u0627\u0634\u0631 \xB7 \u0622\u062E\u0631 \u062F\u0642\u064A\u0642\u0629 " + ds(lt) + " \u0628\u0631\u0644\u064A\u0646 (PAXG/USDT \u0645\u0639\u062F\u0651\u0644 \u0625\u0644\u0649 \u0627\u0644\u0633\u0639\u0631 \u0627\u0644\u0641\u0648\u0631\u064A)");
+  } catch (e) {
+    console.warn(e);
+    status("\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629: " + e.message);
+  }
+}
+$("bLive").onclick = async () => {
+  LIVE.on = !LIVE.on;
+  $("bLive").classList.toggle("on", LIVE.on);
+  if (LIVE.on) {
+    stopPlay();
+    status("\u23F3 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629\u2026");
+    await liveTick(true);
+    LIVE.timer = setInterval(liveTick, 2e4);
+  } else {
+    clearInterval(LIVE.timer);
+    LIVE.timer = null;
+    status("\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0645\u0628\u0627\u0634\u0631");
+  }
+};
+window.GR.live = LIVE;
 const SPR_H = (h) => h >= 13 && h <= 16 ? 0.2 : h >= 7 && h <= 12 ? 0.25 : h >= 17 && h <= 20 ? 0.3 : h >= 21 && h <= 22 ? 0.6 : 0.4;
 const SWAP = { buy: -45, sell: 15 };
 function costCfg() {
