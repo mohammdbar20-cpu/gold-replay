@@ -2374,7 +2374,7 @@ $("bCoachShare").onclick = async () => {
 };
 const GOLD = {
   len: 50,
-  minAtr: 0.4,
+  minAtr: 0.35,
   htf: { M5: "M15", M15: "H1", H1: "H4", H4: "D1", D1: "D1" },
   vtf: { M5: "H1", M15: "H4", H1: "D1", H4: "W", D1: "W" },
   col: { y: "#ff9800", g: "#4caf50", v: "#2962ff", buy: "#00e676", sell: "#ff5252", cg: "rgba(76,175,80,0.15)", cr: "rgba(255,82,82,0.15)" }
@@ -2661,31 +2661,34 @@ async function goldCompute() {
         ATR[i] = ar;
       }
     }
-    const is15 = tf === "M15", sig = new Int8Array(n);
-    let last = 0, pa = false, pb = false;
+    const is15 = tf === "M15", is4 = tf === "H4", sig = new Int8Array(n), ex = new Int8Array(n), AB = new Uint8Array(n), BE = new Uint8Array(n);
+    let last = 0, shown = false;
+    const ok = (v) => v != null && isFinite(v), co = (i, A) => i > 0 && ok(A[i]) && ok(A[i - 1]) && F.c[i] > A[i] && F.c[i - 1] <= A[i - 1], cu = (i, A) => i > 0 && ok(A[i]) && ok(A[i - 1]) && F.c[i] < A[i] && F.c[i - 1] >= A[i - 1];
     for (let i = 0; i < n; i++) {
-      const y = Y2[i], g = G[i], v = V[i];
-      if (i < 3 || y == null || g == null || v == null || Y2[i - 3] == null || G[i - 3] == null || ATR[i] == null) {
-        pa = pb = false;
-        continue;
+      const y = Y2[i], g = G[i], v = V[i], lo = Math.min(F.o[i], F.c[i]), hi = Math.max(F.o[i], F.c[i]), all = ok(y) && ok(g) && ok(v);
+      const ab = all && lo > y && lo > g && lo > v, be = all && hi < y && hi < g && hi < v;
+      AB[i] = ab;
+      BE[i] = be;
+      const gC = all && (is4 ? y < g : y > g), rC = all && (is4 ? y > g : y < g), tOk = all && ATR[i] != null && Math.abs(y - g) > ATR[i] * GOLD.minAtr;
+      if (last === -1 && ab) last = 0;
+      if (last === 1 && be) last = 0;
+      const buy = i >= 4 && ab && AB[i - 1] && AB[i - 2] && AB[i - 3] && !AB[i - 4] && last !== 1 && tOk && gC, sell = i >= 4 && be && BE[i - 1] && BE[i - 2] && BE[i - 3] && !BE[i - 4] && last !== -1 && tOk && rC;
+      if (buy || sell) {
+        last = buy ? 1 : -1;
+        shown = false;
+        sig[i] = buy ? 1 : -1;
       }
-      const ab = is15 ? F.l[i] > y && F.l[i] > g && F.l[i] > v : F.c[i] > y && F.c[i] > g && F.c[i] > v;
-      const be = is15 ? F.h[i] < y && F.h[i] < g && F.h[i] < v : F.c[i] < y && F.c[i] < g && F.c[i] < v;
-      const ys = y - Y2[i - 3], gs = g - G[i - 3], ok = (ys > 0 && gs > 0 || ys < 0 && gs < 0) && Math.abs(y - g) > ATR[i] * GOLD.minAtr;
-      if (ab && !pa && last !== 1 && ok) {
-        last = 1;
-        sig[i] = 1;
+      const oy = co(i, Y2), og = co(i, G), ov = co(i, V), uy = cu(i, Y2), ug = cu(i, G), uv = cu(i, V);
+      const two = oy && og || oy && ov || og && ov || uy && ug || uy && uv || ug && uv, three = oy && og && ov || uy && ug && uv;
+      if (last !== 0 && !shown && (is4 && two || is15 && three)) {
+        shown = true;
+        last = 0;
+        ex[i] = 1;
       }
-      if (be && !pb && last !== -1 && ok) {
-        last = -1;
-        sig[i] = -1;
-      }
-      pa = ab;
-      pb = be;
     }
-    return { Y: Y2, G, V, sig, fy, fg, fv };
+    return { Y: Y2, G, V, sig, ex, fy, fg, fv };
   });
-  const Q2 = await R, out = { Y: [], G: [], V: [], sig: [], is4: tf === "H4" };
+  const Q2 = await R, out = { Y: [], G: [], V: [], sig: [], ex: [], is4: tf === "H4" };
   for (let q = 0; q < B.n; q++) {
     const i = bs(F.t, B.U[q], F.n);
     if (i < 0 || F.t[i] !== B.U[q]) {
@@ -2693,6 +2696,7 @@ async function goldCompute() {
       out.G.push(null);
       out.V.push(null);
       out.sig.push(0);
+      out.ex.push(0);
       continue;
     }
     if (part && q === B.n - 1) {
@@ -2700,14 +2704,16 @@ async function goldCompute() {
       out.G.push(Q2.fg(i, B.H[q], B.L[q], B.C[q], S.cur, true));
       out.V.push(Q2.fv(i, B.H[q], B.L[q], B.C[q], S.cur, true));
       out.sig.push(0);
+      out.ex.push(0);
     } else {
       out.Y.push(Q2.Y[i]);
       out.G.push(Q2.G[i]);
       out.V.push(Q2.V[i]);
       out.sig.push(Q2.sig[i]);
+      out.ex.push(Q2.ex[i]);
     }
   }
-  window.GR.goldAll = () => ({ t: F.t, sig: Q2.sig, h: F.h, l: F.l, c: F.c });
+  window.GR.goldAll = () => ({ t: F.t, sig: Q2.sig, ex: Q2.ex, h: F.h, l: F.l, c: F.c });
   return out;
 }
 goldSer = [[GOLD.col.y, 2], [GOLD.col.g, 2], [GOLD.col.v, 1]].map(([color, lineWidth]) => chart.addLineSeries({ color, lineWidth, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }));
@@ -2781,6 +2787,20 @@ function drawGold() {
       cx.closePath();
       cx.fill();
     }
+  }
+  for (let i = 0; i < B.n; i++) {
+    if (!R.ex[i]) continue;
+    const x = XI(i);
+    if (x == null) continue;
+    const y = Y(B.H[i]) - 6 - (R.sig[i] < 0 ? sz * 1.8 : 0) - sz;
+    cx.fillStyle = GOLD.col.sell;
+    cx.beginPath();
+    cx.moveTo(x, y - sz);
+    cx.lineTo(x + sz * 0.8, y);
+    cx.lineTo(x, y + sz);
+    cx.lineTo(x - sz * 0.8, y);
+    cx.closePath();
+    cx.fill();
   }
 }
 $("bGold").onclick = () => {
