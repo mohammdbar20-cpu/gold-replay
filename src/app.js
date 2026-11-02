@@ -120,7 +120,7 @@ async function render(){
  if(rk!==RK){RK=rk;const lr=T.getVisibleLogicalRange();if(!lr||lr.to<data.length-1)toLatest();}
  B={U,O,H,L,C,n:U.length,nDone,tfs:TFS[tf],A,k};
  S.price=C[C.length-1];
- B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();updEma();
+ B.smc=S.smc.on?computeSMC(B):null;dirty++;updMacd();updEma();updGold();
  $('clock').textContent=ds(cur)+' برلين';{const sd=$('startDate');if(sd&&document.activeElement!==sd)sd.value=ds(cur).slice(0,10);}$('price').textContent=S.price.toFixed(2);
  updLines();updPos();
 }
@@ -547,20 +547,21 @@ $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=n
  try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Gold coach'});else if(navigator.share)await navigator.share({text:s});else $('bCoach').click()}catch(e){}};
 
 
+
 // ========== Gold Indicator ==========
 let goldOn = false, goldSeries = null;
 function updGold() {
   if (!B || !goldOn) {
-    if (goldSeries) goldSeries.forEach(s => chart.removeSeries(s));
-    goldSeries = null;
+    if (goldSeries) { goldSeries.forEach(s => chart.removeSeries(s)); goldSeries = null; }
     return;
   }
-  if (goldSeries) goldSeries.forEach(s => chart.removeSeries(s));
-  goldSeries = [
-    chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
-    chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
-    chart.addLineSeries({color:'#4488ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false})
-  ];
+  if (!goldSeries) {
+    goldSeries = [
+      chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
+      chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
+      chart.addLineSeries({color:'#4488ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false})
+    ];
+  }
   const n = B.n, times = B0.map(b => b.time), C = B.C;
   const calcEma = (len) => {
     const k = 2 / (len + 1); let e = C[0]; const out = [];
