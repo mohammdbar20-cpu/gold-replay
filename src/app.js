@@ -391,7 +391,7 @@ async function init(){
  if(S.v!==3){S.v=3;S.tf='H1';S.smc=Object.assign({},S.smc||{},{on:false})}
  if(!isFinite(S.cur))delete S.cur;if(!TFS[S.tf]||S.tf==='M5')S.tf='H1';
  S.smc=Object.assign({on:false,istr:true,sstr:true,iob:true,sob:true,fvg:true,sw:true,zone:true},S.smc||{});
- $('tf').value=S.tf;tfBtns();S.ema=Object.assign({on:false,p:[20,50,200]},S.ema||{});emaUI();if(S.qlot)$('qLot').value=String(S.qlot);S.macd=Object.assign({on:false,f:12,s:26,g:9},S.macd||{});macdUI();$('riskPct').value=S.riskPct||1;if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
+ $('tf').value=S.tf;tfBtns();S.ema=Object.assign({on:false,p:[20,50,200]},S.ema||{});emaUI();S.gold=Object.assign({on:false},S.gold||{});if(S.qlot)$('qLot').value=String(S.qlot);S.macd=Object.assign({on:false,f:12,s:26,g:9},S.macd||{});macdUI();$('riskPct').value=S.riskPct||1;if(!S.scale)S.scale={auto:true,mode:0};applyScale();$('bMag').classList.toggle('on',S.magnet);$('startBal').value=S.startBal;
  for(const k in S.smc){const el=$('s_'+k);if(el){el.checked=S.smc[k];el.onchange=()=>{S.smc[k]=el.checked;save();if(B)B.smc=S.smc.on?computeSMC(B):null;dirty++}}}
  if(S.cur){await render();status('تمت متابعة الجلسة السابقة')}else await startAt(randStart());
  $('startDate').value=new Date(S.cur*1000).toISOString().slice(0,10);
@@ -548,10 +548,12 @@ $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=n
 
 
 
+
 // ========== Gold Indicator ==========
-let goldOn = false, goldSeries = null;
+let goldSeries = null;
 function updGold() {
-  if (!B || !goldOn) {
+  const on = S.gold && S.gold.on;
+  if (!B || !on) {
     if (goldSeries) { goldSeries.forEach(s => chart.removeSeries(s)); goldSeries = null; }
     return;
   }
@@ -562,10 +564,11 @@ function updGold() {
       chart.addLineSeries({color:'#4488ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false})
     ];
   }
-  const n = B.n, times = B0.map(b => b.time), C = B.C;
+  if (!B0 || !B.C) return;
+  const n = B.n, C = B.C;
   const calcEma = (len) => {
     const k = 2 / (len + 1); let e = C[0]; const out = [];
-    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push({time: times[i], value: e}); }
+    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push({time: B0[i].time, value: e}); }
     return out;
   };
   goldSeries[0].setData(calcEma(50));
@@ -573,4 +576,11 @@ function updGold() {
   goldSeries[2].setData(calcEma(20));
 }
 const bGold = document.getElementById('bGold');
-if (bGold) bGold.onclick = () => { goldOn = !goldOn; bGold.classList.toggle('on', goldOn); updGold(); };
+if (bGold) {
+  bGold.onclick = () => {
+    if (!S.gold) S.gold = {on: false};
+    S.gold.on = !S.gold.on;
+    bGold.classList.toggle('on', S.gold.on);
+    updGold();
+  };
+}
