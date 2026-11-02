@@ -546,29 +546,30 @@ $('bCoachCopy').onclick=async()=>{const s=JSON.stringify(coachData());try{await 
 $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=new File([s],'gold-coach.json',{type:'application/json'});
  try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Gold coach'});else if(navigator.share)await navigator.share({text:s});else $('bCoach').click()}catch(e){}};
 
+
 // ========== Gold Indicator ==========
-let goldOn = false, goldSeries = null, goldSignals = [];
+let goldOn = false, goldSeries = null;
 function updGold() {
   if (!B || !goldOn) {
-    if (goldSeries) goldSeries.forEach(s => s.setData([]));
+    if (goldSeries) goldSeries.forEach(s => chart.removeSeries(s));
+    goldSeries = null;
     return;
   }
-  if (!goldSeries) {
-    goldSeries = [
-      chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false}),
-      chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false}),
-      chart.addLineSeries({color:'#0000ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false})
-    ];
-  }
-  const C = B.C, n = B.n, times = B0.map(b => b.time);
-  const ema = (len) => {
+  if (goldSeries) goldSeries.forEach(s => chart.removeSeries(s));
+  goldSeries = [
+    chart.addLineSeries({color:'#ffa500', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
+    chart.addLineSeries({color:'#00ff00', lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false}),
+    chart.addLineSeries({color:'#4488ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false})
+  ];
+  const n = B.n, times = B0.map(b => b.time), C = B.C;
+  const calcEma = (len) => {
     const k = 2 / (len + 1); let e = C[0]; const out = [];
-    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push(e); }
+    for (let i = 0; i < n; i++) { e = C[i] * k + e * (1 - k); out.push({time: times[i], value: e}); }
     return out;
   };
-  const yellow = ema(50), green = ema(50), vwap = ema(20);
-  goldSeries[0].setData(yellow.map((v,i) => ({time:times[i], value:v})));
-  goldSeries[1].setData(green.map((v,i) => ({time:times[i], value:v})));
-  goldSeries[2].setData(vwap.map((v,i) => ({time:times[i], value:v})));
+  goldSeries[0].setData(calcEma(50));
+  goldSeries[1].setData(calcEma(50));
+  goldSeries[2].setData(calcEma(20));
 }
-$('bGold').onclick = () => { goldOn = !goldOn; $('bGold').classList.toggle('on', goldOn); updGold(); };
+const bGold = document.getElementById('bGold');
+if (bGold) bGold.onclick = () => { goldOn = !goldOn; bGold.classList.toggle('on', goldOn); updGold(); };
