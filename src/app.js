@@ -611,31 +611,35 @@ function vwapSeries(X,intraday,V){const out=new Array(X.n);let ses=null,pv=0,vv=
 // value returned by request.security on chart bar i (historical semantics)
 function secHigher(X,S,ti,endi,conf){const j=bs(X.t,ti,X.n);if(j<0)return null;const idx=(conf&&endi>=X.e[j])?j:j-1;return idx>=0?S[idx]:null}
 function secLower(X,S,endi,conf,cur){let j=bs(X.t,(conf?endi:cur)-1,X.n);if(j<0)return null;if(!conf&&X.e[j]>cur+60)j--;return j>=0?S[j]:null}
-// ===== MATCHED-TO-TRADINGVIEW variant (calibrated on TV XAUUSD 15m, Oct 2026) =====
-// request.security values on each chart bar INCLUDE the forming HTF bar up to this chart bar's close:
-//   EMA = prevConfirmedHTF_EMA*(1-k) + close*k ; VWAP(hlc3) = (sum of confirmed HTF hlc3 in session + forming hlc3)/(count+1).
-// HTF bars are built from the chart TF's own bars (4h buckets 22:00/02:00.. UTC, D/W = 17:00 New York sessions).
+// ===== MATCHED-TO-TRADINGVIEW variant (calibrated on TV OANDA:XAUUSD 15m, Aug-Nov 2026, 9 TV arrows) =====
+// Historical request.security (lookahead_off): HTF value = last CONFIRMED HTF bar; it switches on the chart bar where the
+// HTF bar closes (its last chart bar). The forming chart bar also uses only confirmed HTF values.
+// 4h bars are aligned to the OANDA session (17:00 New York, then every 4h: 17,21,01,05,09,13 NY), 1h bars to the clock.
+// ta.vwap(hlc3) on 4h: anchored to the trading day (17:00 NY), weighted by tick volume (data/M15v.csv; missing -> median).
 // Everything (EMA seed, ATR, lastSide) is computed over the FULL history from GOLD_FROM, so arrows never depend on the replay start.
+let M15V=null;async function loadM15V(){if(M15V)return M15V;const M=new Map();try{const L=(await fetchRetry('data/M15v.csv')).split('\n').filter(Boolean);let q=0;
+ for(let i=0;i<L.length;i++){const r=L[i].split(',');q=i?q+(+r[0]):+r[0];M.set(q*900,+r[1])}}catch(e){}M15V=M;return M}
+function volAt(t,sec){if(!M15V)return 1000;let s=0;const a=Math.floor(t/900)*900;for(let x=a;x<t+Math.max(sec,900);x+=900){const v=M15V.get(x);s+=v==null?1000:v}return s}
 const GOLD_FROM={M5:'2019-01',M15:'2015-01',H1:'2015-01'};
 async function goldFull(tf){const key=tf+'#'+LIVE.ver;if(goldFull.k===key)return goldFull.v;
  let F;if(MAN.tf[tf].months){const ms=MAN.tf[tf].months.filter(m=>m>=GOLD_FROM[tf]);F=cat(await Promise.all(ms.map(m=>load(tf+'m/'+m+'.csv'))))}else F=await load(tf+'.csv');
  goldFull.k=key;goldFull.v=F;return F}
 function gKey(T,tf){const s=TFS[T];if(T===tf)return null;if(T==='D1')return t=>tday(t).d;if(T==='W')return t=>Math.floor((tday(t).d-4)/7);
- if(T==='H4')return t=>Math.floor((t+7200)/14400);return t=>Math.floor(t/s)}
+ if(T==='H4')return t=>{const d=tday(t).d,m=((Math.floor((t+nyOff(t))/60)-17*60)%1440+1440)%1440;return d*8+Math.floor(m/240)};return t=>Math.floor(t/s)}
 // returns function val(i, h_i, l_i, c_i) for chart bar i of F (h/l/c may be the forming values)
-function gProg(F,tf,T,kind,anchorIntraday){const n=F.n,kf=gKey(T,tf),K=2/(GOLD.len+1);
+function gProg(F,tf,T,kind,anchorIntraday){const n=F.n,kf=gKey(T,tf),K=2/(GOLD.len+1),sec=TFS[tf];
  const bk=new Int32Array(n);let nb=-1,pk=null;for(let i=0;i<n;i++){const q=kf?kf(F.t[i]):i;if(q!==pk){nb++;pk=q}bk[i]=nb}nb++;
  const first=new Int32Array(nb),last=new Int32Array(nb);for(let i=n-1;i>=0;i--)first[bk[i]]=i;for(let i=0;i<n;i++)last[bk[i]]=i;
- if(kind==='ema'){const Ep=new Array(nb).fill(null);let e=null,s=0;// Ep[j] = EMA of HTF closes of buckets < j
-  for(let j=0;j<nb;j++){Ep[j]=e;const cl=F.c[last[j]];if(j<GOLD.len){s+=cl;if(j===GOLD.len-1)e=s/GOLD.len}else e=K*cl+(1-K)*e}
-  return (i,hh,ll,cc)=>{const p=Ep[bk[i]];return p==null?null:p*(1-K)+cc*K}}
- const pS=new Float64Array(nb),pW=new Float64Array(nb);let s=0,w=0,ses=null;
- for(let j=0;j<nb;j++){const d=anchorIntraday?tday(F.t[first[j]]).d:j;if(d!==ses){ses=d;s=0;w=0}pS[j]=s;pW[j]=w;
-  let H=-1e18,L=1e18;for(let q=first[j];q<=last[j];q++){if(F.h[q]>H)H=F.h[q];if(F.l[q]<L)L=F.l[q]}s+=(H+L+F.c[last[j]])/3;w++}
- return (i,hh,ll,cc)=>{const j=bk[i];let H=hh,L=ll;for(let q=first[j];q<i;q++){if(F.h[q]>H)H=F.h[q];if(F.l[q]<L)L=F.l[q]}return (pS[j]+(H+L+cc)/3)/(pW[j]+1)}}
+ const Vc=new Array(nb).fill(null);// value of HTF bar j once confirmed
+ if(kind==='ema'){let e=null,s=0;for(let j=0;j<nb;j++){const cl=F.c[last[j]];if(j<GOLD.len){s+=cl;if(j===GOLD.len-1)e=s/GOLD.len}else e=K*cl+(1-K)*e;Vc[j]=e}}
+ else{let s=0,w=0,ses=null;for(let j=0;j<nb;j++){const d=anchorIntraday?tday(F.t[first[j]]).d:j;if(d!==ses){ses=d;s=0;w=0}
+  let H=-1e18,L=1e18,v=0;for(let q=first[j];q<=last[j];q++){if(F.h[q]>H)H=F.h[q];if(F.l[q]<L)L=F.l[q];v+=anchorIntraday?volAt(F.t[q],sec):1}
+  s+=(H+L+F.c[last[j]])/3*v;w+=v;Vc[j]=w?s/w:null}}
+ // closed on bar i if the next bar belongs to another HTF bucket (the very last data bar = still forming)
+ return (i,hh,ll,cc,cur,forming)=>{const j=bk[i];const closed=!forming&&i<n-1&&bk[i+1]!==j;return closed?Vc[j]:(j>0?Vc[j-1]:null)}}
 async function goldCompute(){
  const tf=S.tf,part=B.n>B.nDone,F=await goldFull(tf);
- const R=memo(F,'gold',async()=>{const n=F.n,yT=GOLD.htf[tf],vT=GOLD.vtf[tf];
+ const R=memo(F,'gold',async()=>{await loadM15V();const n=F.n,yT=GOLD.htf[tf],vT=GOLD.vtf[tf];
   const fy=gProg(F,tf,yT,'ema'),fv=gProg(F,tf,vT,'vw',vT==='H1'||vT==='H4');let fg;
   if(tf==='D1'){const X=await load('H4.csv'),E=pEma(X.c,X.n),e4=Float64Array.from(X.t,x=>x+14400);// lower TF: last 4h value inside the day so far
    fg=(i,hh,ll,cc,cur)=>{const end=cur!=null?cur+60:tday(F.t[i]).end;let j=bs(e4,end,X.n);return j>=0?E[j]:null}}
@@ -655,7 +659,7 @@ async function goldCompute(){
  const Q=await R,out={Y:[],G:[],V:[],sig:[],is4:tf==='H4'};
  for(let q=0;q<B.n;q++){const i=bs(F.t,B.U[q],F.n);
   if(i<0||F.t[i]!==B.U[q]){out.Y.push(null);out.G.push(null);out.V.push(null);out.sig.push(0);continue}
-  if(part&&q===B.n-1){out.Y.push(Q.fy(i,B.H[q],B.L[q],B.C[q]));out.G.push(Q.fg(i,B.H[q],B.L[q],B.C[q],S.cur));out.V.push(Q.fv(i,B.H[q],B.L[q],B.C[q]));out.sig.push(0)}
+  if(part&&q===B.n-1){out.Y.push(Q.fy(i,B.H[q],B.L[q],B.C[q],S.cur,true));out.G.push(Q.fg(i,B.H[q],B.L[q],B.C[q],S.cur,true));out.V.push(Q.fv(i,B.H[q],B.L[q],B.C[q],S.cur,true));out.sig.push(0)}
   else{out.Y.push(Q.Y[i]);out.G.push(Q.G[i]);out.V.push(Q.V[i]);out.sig.push(Q.sig[i])}}
  window.GR.goldAll=()=>({t:F.t,sig:Q.sig,h:F.h,l:F.l,c:F.c});
  return out;}

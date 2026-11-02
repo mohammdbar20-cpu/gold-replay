@@ -2514,6 +2514,33 @@ function secLower(X2, S2, endi, conf, cur) {
   if (!conf && X2.e[j] > cur + 60) j--;
   return j >= 0 ? S2[j] : null;
 }
+let M15V = null;
+async function loadM15V() {
+  if (M15V) return M15V;
+  const M = /* @__PURE__ */ new Map();
+  try {
+    const L = (await fetchRetry("data/M15v.csv")).split("\n").filter(Boolean);
+    let q = 0;
+    for (let i = 0; i < L.length; i++) {
+      const r = L[i].split(",");
+      q = i ? q + +r[0] : +r[0];
+      M.set(q * 900, +r[1]);
+    }
+  } catch (e) {
+  }
+  M15V = M;
+  return M;
+}
+function volAt(t, sec) {
+  if (!M15V) return 1e3;
+  let s = 0;
+  const a = Math.floor(t / 900) * 900;
+  for (let x = a; x < t + Math.max(sec, 900); x += 900) {
+    const v = M15V.get(x);
+    s += v == null ? 1e3 : v;
+  }
+  return s;
+}
 const GOLD_FROM = { M5: "2019-01", M15: "2015-01", H1: "2015-01" };
 async function goldFull(tf) {
   const key = tf + "#" + LIVE.ver;
@@ -2532,11 +2559,14 @@ function gKey(T, tf) {
   if (T === tf) return null;
   if (T === "D1") return (t) => tday(t).d;
   if (T === "W") return (t) => Math.floor((tday(t).d - 4) / 7);
-  if (T === "H4") return (t) => Math.floor((t + 7200) / 14400);
+  if (T === "H4") return (t) => {
+    const d = tday(t).d, m = ((Math.floor((t + nyOff(t)) / 60) - 17 * 60) % 1440 + 1440) % 1440;
+    return d * 8 + Math.floor(m / 240);
+  };
   return (t) => Math.floor(t / s);
 }
 function gProg(F, tf, T, kind, anchorIntraday) {
-  const n = F.n, kf = gKey(T, tf), K = 2 / (GOLD.len + 1);
+  const n = F.n, kf = gKey(T, tf), K = 2 / (GOLD.len + 1), sec = TFS[tf];
   const bk = new Int32Array(n);
   let nb = -1, pk = null;
   for (let i = 0; i < n; i++) {
@@ -2551,54 +2581,47 @@ function gProg(F, tf, T, kind, anchorIntraday) {
   const first = new Int32Array(nb), last = new Int32Array(nb);
   for (let i = n - 1; i >= 0; i--) first[bk[i]] = i;
   for (let i = 0; i < n; i++) last[bk[i]] = i;
+  const Vc = new Array(nb).fill(null);
   if (kind === "ema") {
-    const Ep = new Array(nb).fill(null);
-    let e = null, s2 = 0;
+    let e = null, s = 0;
     for (let j = 0; j < nb; j++) {
-      Ep[j] = e;
       const cl = F.c[last[j]];
       if (j < GOLD.len) {
-        s2 += cl;
-        if (j === GOLD.len - 1) e = s2 / GOLD.len;
+        s += cl;
+        if (j === GOLD.len - 1) e = s / GOLD.len;
       } else e = K * cl + (1 - K) * e;
+      Vc[j] = e;
     }
-    return (i, hh, ll, cc) => {
-      const p = Ep[bk[i]];
-      return p == null ? null : p * (1 - K) + cc * K;
-    };
+  } else {
+    let s = 0, w = 0, ses = null;
+    for (let j = 0; j < nb; j++) {
+      const d = anchorIntraday ? tday(F.t[first[j]]).d : j;
+      if (d !== ses) {
+        ses = d;
+        s = 0;
+        w = 0;
+      }
+      let H = -1e18, L = 1e18, v = 0;
+      for (let q = first[j]; q <= last[j]; q++) {
+        if (F.h[q] > H) H = F.h[q];
+        if (F.l[q] < L) L = F.l[q];
+        v += anchorIntraday ? volAt(F.t[q], sec) : 1;
+      }
+      s += (H + L + F.c[last[j]]) / 3 * v;
+      w += v;
+      Vc[j] = w ? s / w : null;
+    }
   }
-  const pS = new Float64Array(nb), pW = new Float64Array(nb);
-  let s = 0, w = 0, ses = null;
-  for (let j = 0; j < nb; j++) {
-    const d = anchorIntraday ? tday(F.t[first[j]]).d : j;
-    if (d !== ses) {
-      ses = d;
-      s = 0;
-      w = 0;
-    }
-    pS[j] = s;
-    pW[j] = w;
-    let H = -1e18, L = 1e18;
-    for (let q = first[j]; q <= last[j]; q++) {
-      if (F.h[q] > H) H = F.h[q];
-      if (F.l[q] < L) L = F.l[q];
-    }
-    s += (H + L + F.c[last[j]]) / 3;
-    w++;
-  }
-  return (i, hh, ll, cc) => {
+  return (i, hh, ll, cc, cur, forming) => {
     const j = bk[i];
-    let H = hh, L = ll;
-    for (let q = first[j]; q < i; q++) {
-      if (F.h[q] > H) H = F.h[q];
-      if (F.l[q] < L) L = F.l[q];
-    }
-    return (pS[j] + (H + L + cc) / 3) / (pW[j] + 1);
+    const closed = !forming && i < n - 1 && bk[i + 1] !== j;
+    return closed ? Vc[j] : j > 0 ? Vc[j - 1] : null;
   };
 }
 async function goldCompute() {
   const tf = S.tf, part = B.n > B.nDone, F = await goldFull(tf);
   const R = memo(F, "gold", async () => {
+    await loadM15V();
     const n = F.n, yT = GOLD.htf[tf], vT = GOLD.vtf[tf];
     const fy = gProg(F, tf, yT, "ema"), fv = gProg(F, tf, vT, "vw", vT === "H1" || vT === "H4");
     let fg;
@@ -2663,9 +2686,9 @@ async function goldCompute() {
       continue;
     }
     if (part && q === B.n - 1) {
-      out.Y.push(Q2.fy(i, B.H[q], B.L[q], B.C[q]));
-      out.G.push(Q2.fg(i, B.H[q], B.L[q], B.C[q], S.cur));
-      out.V.push(Q2.fv(i, B.H[q], B.L[q], B.C[q]));
+      out.Y.push(Q2.fy(i, B.H[q], B.L[q], B.C[q], S.cur, true));
+      out.G.push(Q2.fg(i, B.H[q], B.L[q], B.C[q], S.cur, true));
+      out.V.push(Q2.fv(i, B.H[q], B.L[q], B.C[q], S.cur, true));
       out.sig.push(0);
     } else {
       out.Y.push(Q2.Y[i]);
