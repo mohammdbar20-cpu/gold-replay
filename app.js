@@ -2374,7 +2374,7 @@ $("bCoachShare").onclick = async () => {
 };
 const GOLD = {
   len: 50,
-  minAtr: 0.35,
+  minAtr: 0.4,
   htf: { M5: "M15", M15: "H1", H1: "H4", H4: "D1", D1: "D1" },
   vtf: { M5: "H1", M15: "H4", H1: "D1", H4: "W", D1: "W" },
   col: { y: "#ff9800", g: "#4caf50", v: "#2962ff", buy: "#00e676", sell: "#ff5252", cg: "rgba(76,175,80,0.15)", cr: "rgba(255,82,82,0.15)" }

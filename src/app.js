@@ -584,7 +584,7 @@ $('bCoachShare').onclick=async()=>{const s=JSON.stringify(coachData());const f=n
 //  - ta.ema: alpha=2/(len+1), na for the first len-1 bars, seeded with ta.sma(len). ta.atr = ta.rma(ta.tr(true),14), SMA-seeded.
 //  - ta.vwap(hlc3) on vwapTF anchored to each new trading day (session 17:00 New York, like OANDA:XAUUSD), volume = Dukascopy tick volume (H4v.csv).
 // The forming (unconfirmed) chart bar also gets the last confirmed HTF values, so nothing from the future is used.
-const GOLD={len:50,minAtr:0.35,htf:{M5:'M15',M15:'H1',H1:'H4',H4:'D1',D1:'D1'},vtf:{M5:'H1',M15:'H4',H1:'D1',H4:'W',D1:'W'},
+const GOLD={len:50,minAtr:0.4,htf:{M5:'M15',M15:'H1',H1:'H4',H4:'D1',D1:'D1'},vtf:{M5:'H1',M15:'H4',H1:'D1',H4:'W',D1:'W'},
  col:{y:'#ff9800',g:'#4caf50',v:'#2962ff',buy:'#00e676',sell:'#ff5252',cg:'rgba(76,175,80,0.15)',cr:'rgba(255,82,82,0.15)'}};
 let goldSer=null,goldRes=null,goldG=0;const goldC=new WeakMap();
 const nyF=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
