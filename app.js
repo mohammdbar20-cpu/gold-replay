@@ -2514,79 +2514,170 @@ function secLower(X2, S2, endi, conf, cur) {
   if (!conf && X2.e[j] > cur + 60) j--;
   return j >= 0 ? S2[j] : null;
 }
-async function goldCompute() {
-  const tf = S.tf, A = B.A, k = B.k, part = B.n > B.nDone;
-  const n = k + (part ? 1 : 0), t = new Float64Array(n), h = new Float64Array(n), l = new Float64Array(n), c = new Float64Array(n);
-  t.set(A.t.subarray(0, k));
-  h.set(A.h.subarray(0, k));
-  l.set(A.l.subarray(0, k));
-  c.set(A.c.subarray(0, k));
-  if (part) {
-    const q = B.n - 1;
-    t[n - 1] = B.U[q];
-    h[n - 1] = B.H[q];
-    l[n - 1] = B.L[q];
-    c[n - 1] = B.C[q];
-  }
-  const F4 = await load("H4.csv"), FD = await load("D1.csv"), V4 = await loadH4V();
-  const X4 = htfH4(F4), XD = htfD(FD), XW = htfW(FD);
-  const Xof = (x) => x === "H4" ? X4 : x === "D1" ? XD : x === "W" ? XW : htfAgg(A.t, A.h, A.l, A.c, A.n, TFS[x]);
-  const yT = GOLD.htf[tf], vT = GOLD.vtf[tf], XY = Xof(yT), XV = Xof(vT);
-  const SY = memo(XY, "ema", () => pEma(XY.c, XY.n)), SG = memo(X4, "ema", () => pEma(X4.c, X4.n)), SV = memo(XV, "vw", () => vwapSeries(XV, vT === "H4" || vT === "H1", vT === "H4" ? V4 : null));
-  const endOf = tf === "D1" ? (x) => tday(x).end : (x) => x + TFS[tf];
-  const Y2 = new Array(n), G = new Array(n), V = new Array(n), ATR = new Array(n).fill(null);
-  let ar = 0;
+const GOLD_FROM = { M5: "2019-01", M15: "2015-01", H1: "2015-01" };
+async function goldFull(tf) {
+  const key = tf + "#" + LIVE.ver;
+  if (goldFull.k === key) return goldFull.v;
+  let F;
+  if (MAN.tf[tf].months) {
+    const ms = MAN.tf[tf].months.filter((m) => m >= GOLD_FROM[tf]);
+    F = cat(await Promise.all(ms.map((m) => load(tf + "m/" + m + ".csv"))));
+  } else F = await load(tf + ".csv");
+  goldFull.k = key;
+  goldFull.v = F;
+  return F;
+}
+function gKey(T, tf) {
+  const s = TFS[T];
+  if (T === tf) return null;
+  if (T === "D1") return (t) => tday(t).d;
+  if (T === "W") return (t) => Math.floor((tday(t).d - 4) / 7);
+  if (T === "H4") return (t) => Math.floor((t + 7200) / 14400);
+  return (t) => Math.floor(t / s);
+}
+function gProg(F, tf, T, kind, anchorIntraday) {
+  const n = F.n, kf = gKey(T, tf), K = 2 / (GOLD.len + 1);
+  const bk = new Int32Array(n);
+  let nb = -1, pk = null;
   for (let i = 0; i < n; i++) {
-    const conf = !(part && i === n - 1), e = endOf(t[i]);
-    Y2[i] = secHigher(XY, SY, t[i], e, conf);
-    G[i] = tf === "D1" ? secLower(X4, SG, e, conf, S.cur) : secHigher(X4, SG, t[i], e, conf);
-    V[i] = secHigher(XV, SV, t[i], e, conf);
-    const tr2 = i ? Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1])) : h[i] - l[i];
-    if (i < 14) {
-      ar += tr2;
-      if (i === 13) {
-        ar /= 14;
+    const q = kf ? kf(F.t[i]) : i;
+    if (q !== pk) {
+      nb++;
+      pk = q;
+    }
+    bk[i] = nb;
+  }
+  nb++;
+  const first = new Int32Array(nb), last = new Int32Array(nb);
+  for (let i = n - 1; i >= 0; i--) first[bk[i]] = i;
+  for (let i = 0; i < n; i++) last[bk[i]] = i;
+  if (kind === "ema") {
+    const Ep = new Array(nb).fill(null);
+    let e = null, s2 = 0;
+    for (let j = 0; j < nb; j++) {
+      Ep[j] = e;
+      const cl = F.c[last[j]];
+      if (j < GOLD.len) {
+        s2 += cl;
+        if (j === GOLD.len - 1) e = s2 / GOLD.len;
+      } else e = K * cl + (1 - K) * e;
+    }
+    return (i, hh, ll, cc) => {
+      const p = Ep[bk[i]];
+      return p == null ? null : p * (1 - K) + cc * K;
+    };
+  }
+  const pS = new Float64Array(nb), pW = new Float64Array(nb);
+  let s = 0, w = 0, ses = null;
+  for (let j = 0; j < nb; j++) {
+    const d = anchorIntraday ? tday(F.t[first[j]]).d : j;
+    if (d !== ses) {
+      ses = d;
+      s = 0;
+      w = 0;
+    }
+    pS[j] = s;
+    pW[j] = w;
+    let H = -1e18, L = 1e18;
+    for (let q = first[j]; q <= last[j]; q++) {
+      if (F.h[q] > H) H = F.h[q];
+      if (F.l[q] < L) L = F.l[q];
+    }
+    s += (H + L + F.c[last[j]]) / 3;
+    w++;
+  }
+  return (i, hh, ll, cc) => {
+    const j = bk[i];
+    let H = hh, L = ll;
+    for (let q = first[j]; q < i; q++) {
+      if (F.h[q] > H) H = F.h[q];
+      if (F.l[q] < L) L = F.l[q];
+    }
+    return (pS[j] + (H + L + cc) / 3) / (pW[j] + 1);
+  };
+}
+async function goldCompute() {
+  const tf = S.tf, part = B.n > B.nDone, F = await goldFull(tf);
+  const R = memo(F, "gold", async () => {
+    const n = F.n, yT = GOLD.htf[tf], vT = GOLD.vtf[tf];
+    const fy = gProg(F, tf, yT, "ema"), fv = gProg(F, tf, vT, "vw", vT === "H1" || vT === "H4");
+    let fg;
+    if (tf === "D1") {
+      const X2 = await load("H4.csv"), E = pEma(X2.c, X2.n), e4 = Float64Array.from(X2.t, (x) => x + 14400);
+      fg = (i, hh, ll, cc, cur) => {
+        const end = cur != null ? cur + 60 : tday(F.t[i]).end;
+        let j = bs(e4, end, X2.n);
+        return j >= 0 ? E[j] : null;
+      };
+    } else fg = gProg(F, tf, "H4", "ema");
+    const Y2 = new Array(n), G = new Array(n), V = new Array(n), ATR = new Array(n).fill(null);
+    let ar = 0;
+    for (let i = 0; i < n; i++) {
+      Y2[i] = fy(i, F.h[i], F.l[i], F.c[i]);
+      G[i] = fg(i, F.h[i], F.l[i], F.c[i]);
+      V[i] = fv(i, F.h[i], F.l[i], F.c[i]);
+      const tr2 = i ? Math.max(F.h[i] - F.l[i], Math.abs(F.h[i] - F.c[i - 1]), Math.abs(F.l[i] - F.c[i - 1])) : F.h[i] - F.l[i];
+      if (i < 14) {
+        ar += tr2;
+        if (i === 13) {
+          ar /= 14;
+          ATR[i] = ar;
+        }
+      } else {
+        ar = (ar * 13 + tr2) / 14;
         ATR[i] = ar;
       }
+    }
+    const is15 = tf === "M15", sig = new Int8Array(n);
+    let last = 0, pa = false, pb = false;
+    for (let i = 0; i < n; i++) {
+      const y = Y2[i], g = G[i], v = V[i];
+      if (i < 3 || y == null || g == null || v == null || Y2[i - 3] == null || G[i - 3] == null || ATR[i] == null) {
+        pa = pb = false;
+        continue;
+      }
+      const ab = is15 ? F.l[i] > y && F.l[i] > g && F.l[i] > v : F.c[i] > y && F.c[i] > g && F.c[i] > v;
+      const be = is15 ? F.h[i] < y && F.h[i] < g && F.h[i] < v : F.c[i] < y && F.c[i] < g && F.c[i] < v;
+      const ys = y - Y2[i - 3], gs = g - G[i - 3], ok = (ys > 0 && gs > 0 || ys < 0 && gs < 0) && Math.abs(y - g) > ATR[i] * GOLD.minAtr;
+      if (ab && !pa && last !== 1 && ok) {
+        last = 1;
+        sig[i] = 1;
+      }
+      if (be && !pb && last !== -1 && ok) {
+        last = -1;
+        sig[i] = -1;
+      }
+      pa = ab;
+      pb = be;
+    }
+    return { Y: Y2, G, V, sig, fy, fg, fv };
+  });
+  const Q2 = await R, out = { Y: [], G: [], V: [], sig: [], is4: tf === "H4" };
+  for (let q = 0; q < B.n; q++) {
+    const i = bs(F.t, B.U[q], F.n);
+    if (i < 0 || F.t[i] !== B.U[q]) {
+      out.Y.push(null);
+      out.G.push(null);
+      out.V.push(null);
+      out.sig.push(0);
+      continue;
+    }
+    if (part && q === B.n - 1) {
+      out.Y.push(Q2.fy(i, B.H[q], B.L[q], B.C[q]));
+      out.G.push(Q2.fg(i, B.H[q], B.L[q], B.C[q], S.cur));
+      out.V.push(Q2.fv(i, B.H[q], B.L[q], B.C[q]));
+      out.sig.push(0);
     } else {
-      ar = (ar * 13 + tr2) / 14;
-      ATR[i] = ar;
+      out.Y.push(Q2.Y[i]);
+      out.G.push(Q2.G[i]);
+      out.V.push(Q2.V[i]);
+      out.sig.push(Q2.sig[i]);
     }
   }
-  const is15 = tf === "M15", sig = new Int8Array(n);
-  let last = 0, pa = false, pb = false;
-  const nc = part ? n - 1 : n;
-  for (let i = 0; i < nc; i++) {
-    const y = Y2[i], g = G[i], v = V[i];
-    const ab = y != null && g != null && v != null && (is15 ? l[i] > y && l[i] > g && l[i] > v : c[i] > y && c[i] > g && c[i] > v);
-    const be = y != null && g != null && v != null && (is15 ? h[i] < y && h[i] < g && h[i] < v : c[i] < y && c[i] < g && c[i] < v);
-    let ok = false;
-    if (i >= 3 && y != null && g != null && Y2[i - 3] != null && G[i - 3] != null && ATR[i] != null) {
-      const ys = y - Y2[i - 3], gs = g - G[i - 3];
-      ok = (ys > 0 && gs > 0 || ys < 0 && gs < 0) && Math.abs(y - g) > ATR[i] * GOLD.minAtr;
-    }
-    const buy = ab && !pa && last !== 1 && ok, sell = be && !pb && last !== -1 && ok;
-    if (buy) {
-      last = 1;
-      sig[i] = 1;
-    }
-    if (sell) {
-      last = -1;
-      sig[i] = -1;
-    }
-    pa = ab;
-    pb = be;
-  }
-  const o = n - B.n, R = { Y: [], G: [], V: [], sig: [], is4: tf === "H4" };
-  for (let i = 0; i < B.n; i++) {
-    const q = i + o;
-    R.Y.push(Y2[q]);
-    R.G.push(G[q]);
-    R.V.push(V[q]);
-    R.sig.push(sig[q]);
-  }
-  return R;
+  window.GR.goldAll = () => ({ t: F.t, sig: Q2.sig, h: F.h, l: F.l, c: F.c });
+  return out;
 }
+goldSer = [[GOLD.col.y, 2], [GOLD.col.g, 2], [GOLD.col.v, 1]].map(([color, lineWidth]) => chart.addLineSeries({ color, lineWidth, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }));
 async function updGold() {
   const on = S.gold && S.gold.on;
   const bt = $("bGold");
@@ -2597,7 +2688,6 @@ async function updGold() {
     dirty++;
     return;
   }
-  if (!goldSer) goldSer = [[GOLD.col.y, 2], [GOLD.col.g, 2], [GOLD.col.v, 1]].map(([color, lineWidth]) => chart.addLineSeries({ color, lineWidth, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }));
   const g = ++goldG, b = B;
   let R;
   try {
@@ -2607,7 +2697,11 @@ async function updGold() {
     return;
   }
   if (g !== goldG || b !== B || !(S.gold && S.gold.on)) return;
-  [R.Y, R.G, R.V].forEach((a, j) => goldSer[j].setData(a.map((v, i) => v == null ? { time: B0[i].time } : { time: B0[i].time, value: v })));
+  [R.Y, R.G, R.V].forEach((a, j) => {
+    const d = [];
+    for (let i = 0; i < a.length; i++) if (a[i] != null && isFinite(a[i])) d.push({ time: B0[i].time, value: a[i] });
+    goldSer[j].setData(d);
+  });
   goldRes = R;
   dirty++;
 }
@@ -2629,7 +2723,7 @@ function drawGold() {
     cx.closePath();
     cx.fill();
   }
-  const sp = chart.timeScale().options().barSpacing, sz = Math.max(4, Math.min(8, sp * 0.8));
+  const sp = chart.timeScale().options().barSpacing, sz = Math.max(6, Math.min(9, sp * 0.8));
   for (let i = 0; i < B.n; i++) {
     const s = R.sig[i];
     if (!s) continue;
