@@ -248,7 +248,14 @@
       cx.strokeStyle = col; cx.globalAlpha = hot ? 1 : l.chan ? (l.watch ? 0.7 : 0.9) : l.star ? 0.95 : 0.7; cx.lineWidth = hot ? 3 : l.star ? 2.2 : l.chan && l.ck >= 6 ? 2.2 : 1.4;
       cx.setLineDash(l.chan ? [10, 5] : l.dash ? [4, 5] : []);
       if (hot) { cx.shadowColor = col; cx.shadowBlur = 12 + 6 * Math.sin(now / 150); }
-      cx.beginPath(); if (l.chan && l.ck != null && save.zz !== 0) { for (var sx = 0; sx <= W + 1; sx += 24) { var q = MOP.chLines(tOfX(sx))[l.ck]; if (q && q.px != null) { var sy = yOf(q.px); if (!sx) cx.moveTo(sx, sy); else cx.lineTo(sx, sy); } } } else { cx.moveTo(0, y); cx.lineTo(W, y); }
+      var x0 = save.zz !== 0 ? Math.max(0, planeX() - 40) : 0, A = cx.globalAlpha;
+      if (l.chan && l.ck != null && save.zz !== 0) { // user's channels: real slope, faint behind the plane, full ahead
+        var seg = function (xa, xb) { cx.beginPath(); var f = true; for (var sx = xa; sx <= xb + 23; sx += 24) { var xx = Math.min(sx, xb), q = MOP.chLines(tOfX(xx))[l.ck]; if (q && q.px != null) { var sy = yOf(q.px); if (f) { cx.moveTo(xx, sy); f = false; } else cx.lineTo(xx, sy); } } cx.stroke(); };
+        cx.globalAlpha = A * 0.3; seg(0, x0); cx.globalAlpha = A; seg(x0, W); cx.beginPath(); }
+      else { // horizontal levels only in the area ahead of the plane, fading in at the start
+        if (x0 > 0) { cx.strokeStyle = col; cx.beginPath(); cx.moveTo(x0 + 50, y); cx.lineTo(W, y); cx.stroke();
+          cx.globalAlpha = A * 0.5; cx.beginPath(); cx.moveTo(x0, y); cx.lineTo(x0 + 25, y); cx.stroke(); cx.globalAlpha = A * 0.8; cx.beginPath(); cx.moveTo(x0 + 25, y); cx.lineTo(x0 + 50, y); cx.stroke(); cx.globalAlpha = A; cx.beginPath(); }
+        else { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); } }
       cx.stroke(); cx.setLineDash([]); cx.shadowBlur = 0; cx.globalAlpha = 1;
       var sl = l.chan && l.ck != null && save.zz !== 0, lx = sl ? planeX() - 46 : W - 6, U = sl ? usedC : used;
       if (!hot && U.some(function (u) { return Math.abs(u - y) < 15; })) return; U.push(y);
