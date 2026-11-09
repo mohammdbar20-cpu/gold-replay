@@ -1,0 +1,34 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>طيارة الدهب ✈️ · XAUUSD</title><meta name="theme-color" content="#0b1d3a">
+<meta name="description" content="لعبة توقع: الطيارة هي سعر الدهب الحي، والخطوط هي مستويات مؤشر MO Gold Pro">
+<link rel="stylesheet" href="style.css?v=1"></head><body>
+<canvas id="cv"></canvas>
+<div id="hud">
+ <div id="topbar">
+  <div class="pbox"><div id="price">—</div><div id="chg" class="small">جار التحميل…</div></div>
+  <div class="sbox"><div id="status" class="pill">⏳ جار الاتصال</div><div id="clock" class="small">—</div></div>
+ </div>
+ <div id="scorebar"><span>⭐ <b id="score">0</b></span><span>🔥 <b id="streak">0</b></span><span>🏆 <b id="best">0</b></span><span id="acc" class="small"></span></div>
+ <div id="trendchip" class="chip hidden"></div>
+</div>
+<div id="bottombar">
+ <button id="bRead">📊 قراءة المؤشر</button>
+ <button id="bMode">🔁 ريبلاي</button>
+ <button id="bHist">📜 السجل</button>
+ <button id="bSet">⚙️</button>
+</div>
+<div id="toast" class="hidden"></div>
+<div id="ask" class="sheet hidden">
+ <div class="grab"></div>
+ <div id="askTitle" class="title"></div>
+ <div id="askSub" class="small"></div>
+ <ul id="askHints" class="hints"></ul>
+ <div class="btns"><button id="aBounce" class="big bounce"></button><button id="aBreak" class="big brk"></button></div>
+ <div class="timer"><i id="askBar"></i></div>
+ <button id="aSkip" class="link">تخطّي هالمستوى</button>
+</div>
+<div id="panel" class="sheet hidden"><div class="grab"></div><button class="x" data-close>✕</button><div id="panelBody"></div></div>
+<script src="mo.js?v=1"></script>
+<script src="game.js?v=1"></script>
+</body></html>
