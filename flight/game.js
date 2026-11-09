@@ -6,7 +6,10 @@
   var MIN = 60e3, H = 3600e3, WINDOW = 90 * MIN;
   var cv = $('cv'), cx = cv.getContext('2d'), W = 0, Ht = 0, DPR = 1;
   var LS = 'flight.v1', save = load();
-  function load() { try { var s = JSON.parse(localStorage.getItem(LS)); if (s) return s; } catch (e) {} return { score: 0, best: 0, streak: 0, hist: [], custom: [], near: 3, groups: { grok: 1, liq: 1, sr: 1, ema: 1, prof: 1, round: 1, custom: 1 } }; }
+  function load() { try { var s = JSON.parse(localStorage.getItem(LS)); if (s) return s; } catch (e) {} return { score: 0, best: 0, streak: 0, hist: [], custom: [], near: 3, groups: { map: 1, prof: 1, ch: 1, custom: 1 } }; }
+  var bT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false }), bD = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' });
+  var MO = { berlinTime: function (t) { return bT.format(new Date(t)); }, berlinDay: function (t) { return bD.format(new Date(t)); } };
+  if (!save.groups || save.groups.grok != null) save.groups = { map: 1, prof: 1, ch: 1, custom: 1 };
   function store() { try { localStorage.setItem(LS, JSON.stringify(save)); } catch (e) {} }
   var S = { mode: 'boot', price: null, disp: null, src: '', lastTick: 0, samples: [], data: { m15: [], h1: [], h4: [], m5: [] }, map: null, sig: null, mapAt: 0,
     simT: 0, simPath: [], simIdx: 0, paused: false, ask: null, round: null, cool: {}, fx: [], center: null, span: 20, tilt: 0, vel: 0, fetchErr: 0, liveOk: false, closed: false, dayChg: null };
@@ -14,70 +17,85 @@
   function bq(iv, n) { return fetch(BQ + iv + '&limit=' + n, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (d) {
     return d.bars.map(function (b) { return { t: Date.parse(b.openTime), o: +b.open, h: +b.high, l: +b.low, c: +b.close, v: +(b.tickVolume || b.volume || 0), open: !!b.isOpen }; }).sort(function (a, b) { return a.t - b.t; }); }); }
   function fromStatic(a) { return a.map(function (r) { return { t: r[0] * 1000, o: r[1], h: r[2], l: r[3], c: r[4], v: r[5] || 1, open: false }; }); }
-  var staticData = null;
+  var HIST = null, LIVE = { m15: [], h1: [] }, staticData = null, LSB = 'flight.m15';
+  function getHist() { return HIST ? Promise.resolve(HIST) : fetch('history.json?v=2').then(function (r) { return r.json(); }).then(function (j) { HIST = j; return j; }); }
   function getStatic() { return staticData ? Promise.resolve(staticData) : fetch('replay.json?v=1').then(function (r) { return r.json(); }).then(function (j) { staticData = j; return j; }); }
+  function cache15() { try { return (JSON.parse(localStorage.getItem(LSB)) || []).map(function (r) { return { t: r[0], o: r[1], h: r[2], l: r[3], c: r[4], v: r[5] }; }); } catch (e) { return []; } }
+  function saveCache(m15) { try { localStorage.setItem(LSB, JSON.stringify(m15.slice(-3000).map(function (x) { return [x.t, x.o, x.h, x.l, x.c, Math.round(x.v)]; }))); } catch (e) {} }
   function loadCandles(full) {
-    var jobs = [bq('15m', 200).then(function (b) { S.data.m15 = b; })];
-    jobs.push(bq('5m', 30).then(function (b) { S.data.m5 = b; }).catch(function () {}));
-    if (full) jobs.push(bq('1h', 200).then(function (b) { S.data.h1 = b; }), bq('4h', 200).then(function (b) { S.data.h4 = b; }), bq('1d', 3).then(function (b) { S.data.d1 = b; }));
-    return Promise.all(jobs).then(function () { S.candleSrc = 'biquote.io'; S.fetchErr = 0; }).catch(function (e) {
-      S.fetchErr++; if (S.data.h4.length) return;
-      return getStatic().then(function (j) { S.data.m15 = fromStatic(j.m15); S.data.h1 = fromStatic(j.h1); S.data.h4 = fromStatic(j.h4); S.candleSrc = 'نسخة محفوظة ' + j.made.slice(0, 10); });
-    });
+    var jobs = [getHist(), bq('15m', 200).then(function (b) { LIVE.m15 = b; S.data.m15raw = b; }), bq('5m', 30).then(function (b) { S.data.m5 = b; }).catch(function () {})];
+    if (full || !LIVE.h1.length) jobs.push(bq('1h', 200).then(function (b) { LIVE.h1 = b; }), bq('1d', 3).then(function (b) { S.data.d1q = b; }).catch(function () {}));
+    return Promise.all(jobs).then(function () { S.candleSrc = 'biquote.io + history.json'; S.fetchErr = 0; }).catch(function () { S.fetchErr++; S.candleSrc = 'history.json فقط (biquote ما ردّ)'; return getHist(); });
   }
   function pollPrice() {
     return fetch(GOLDAPI, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
       var p = +j.price, age = Date.now() - Date.parse(j.updatedAt); if (!(p > 100)) throw new Error('bad');
       return { p: p, age: age, src: 'gold-api.com' };
-    }).catch(function () { // fallback: last 15m candle from biquote
-      return bq('15m', 2).then(function (b) { var l = b[b.length - 1]; return { p: l.c, age: Date.now() - l.t - (l.open ? 0 : 15 * MIN), src: 'biquote.io' }; });
-    });
+    }).catch(function () { return bq('15m', 2).then(function (b) { var l = b[b.length - 1]; return { p: l.c, age: Date.now() - l.t - (l.open ? 0 : 15 * MIN), src: 'biquote.io' }; }); });
   }
-  // ---------------------------------------------------------------- level map (indicator)
+  // ---------------------------------------------------------------- indicator (MO Gold Pro port, mopro.js)
   function nowT() { return S.mode === 'replay' ? S.simT : Date.now(); }
-  function upto(bs, t) { return bs.filter(function (b) { return b.t <= t; }).map(function (b) { return b; }); }
-  function rebuildMap() {
-    var t = nowT(), d = S.data, m15 = S.mode === 'replay' ? upto(d.m15, t) : d.m15, h4 = S.mode === 'replay' ? upto(d.h4, t) : d.h4, h1 = S.mode === 'replay' ? upto(d.h1, t) : d.h1;
-    if (S.mode === 'replay') { var last = m15[m15.length - 1]; if (last && last.t + 15 * MIN > t) { last = Object.assign({}, last, { open: true }); m15[m15.length - 1] = last; } }
-    S.ctx = { m15: m15, h4: h4, h1: h1, now: t };
-    var custom = save.groups.custom ? save.custom : [];
-    var m = MO.levelMap({ m15: m15, h4: h4, now: t, price: S.price, custom: custom });
-    m.levels = m.levels.filter(function (l) { return l.groups.some(function (g) { return save.groups[g]; }); });
-    S.map = m; S.sig = MO.signals(m15, h1, h4, t); S.mapAt = t;
-    var tc = $('trendchip'); if (S.sig.trend) { tc.classList.remove('hidden'); tc.textContent = (S.sig.trend > 0 ? '☁️ الغيمة خضرا (فوق)' : '☁️ الغيمة حمرا (تحت)') + (S.sig.trendOk ? '' : ' · تذبذب'); } else tc.classList.add('hidden');
+  var lastRunKey = '';
+  function rebuildMap(force) {
+    if (!HIST) return; var t = nowT(), key = Math.floor(t / (15 * MIN)) + '|' + S.mode + '|' + (save.news || '').length + '|' + (save.mem || '').length + '|' + LIVE.m15.length;
+    if (!force && key === lastRunKey && S.R) { buildLevels(); return; } lastRunKey = key;
+    var ex = cache15(), D = MOP.buildData(HIST, { m15: LIVE.m15, h1: LIVE.h1 }, t, ex);
+    if (S.mode === 'live' && D.m15.length > ex.length) saveCache(D.m15);
+    S.D = D; S.R = MOP.run(D, { news: save.news, mem: save.mem }); S.mapAt = t; buildLevels();
+  }
+  var GROUPS = { map: 'خريطة 4H (MO)', prof: 'VAH/VAL/POC اليومي', ch: 'قنواتي', custom: 'مستوياتي' };
+  function tagTxt(t) { return t.replace(/\+/g, ' + ').replace(/·/g, ' '); }
+  function buildLevels() {
+    var R = S.R, out = []; if (!R || !R.snap) { S.map = { levels: [] }; return; }
+    var s = R.snap, p = S.price || s.close, t = nowT();
+    function add(o) { if (o.px != null && isFinite(o.px) && save.groups[o.group] !== 0) out.push(o); }
+    s.map.forEach(function (l) { add({ px: l.p, label: (l.star ? '★ ' : '') + tagTxt(l.t), group: 'map', C: l.C, star: l.star, lv: l, color: null }); });
+    if (s.today && s.today.poc != null) { add({ px: s.today.poc, label: 'POC اليوم', group: 'prof', color: '#ff9800' }); add({ px: s.today.vah, label: 'VAH اليوم', group: 'prof', color: '#5c9dff' }); add({ px: s.today.val, label: 'VAL اليوم', group: 'prof', color: '#5c9dff' }); }
+    if (s.y) { add({ px: s.y.poc, label: 'POC أمس' + (s.yNaked ? ' 🧲' : ''), group: 'prof', color: '#ffb74d', dash: 1 }); add({ px: s.y.vah, label: 'VAH أمس', group: 'prof', color: '#90caf9', dash: 1 }); add({ px: s.y.val, label: 'VAL أمس', group: 'prof', color: '#90caf9', dash: 1 }); }
+    var CC = ['#4dd0e1', '#b388ff', '#3ddc84'];
+    MOP.chLines(t).forEach(function (c) { var act = c.ch < 2 || s.c3On; if (c.ch === 2 && !act && !save.showWatch) return; add({ px: c.px, label: '📐 ' + c.name + (act ? '' : ' (مراقبة)'), group: 'ch', color: CC[c.ch], chan: 1, watch: !act }); });
+    (save.custom || []).forEach(function (c) { add({ px: +c.px, label: c.name || 'مستواي', group: 'custom', color: '#f783ac' }); });
+    out.sort(function (a, b) { return a.px - b.px; });
+    var merged = []; out.forEach(function (l) { var m = merged[merged.length - 1]; if (m && Math.abs(m.px - l.px) <= 1) { m.parts.push(l); if (l.group === 'map') { m.lv = l.lv; m.star = l.star; m.C = l.C; } m.label = m.parts.map(function (q) { return q.label; }).join(' · '); m.watch = m.watch && l.watch; }
+      else merged.push({ px: l.px, label: l.label, parts: [l], lv: l.lv, star: l.star, C: l.C, color: l.color, chan: l.chan, dash: l.dash, watch: l.watch }); });
+    S.map = { levels: merged, snap: s };
+    renderTrend();
+  }
+  function lvColor(l) { var p = S.disp || S.price || 0; return l.chan ? l.color : l.px < p ? '#9cff3c' : '#ff5c5c'; } // Pine branch: colour by current side
+  function renderTrend() {
+    var s = S.R && S.R.snap, tc = $('trendchip'); if (!s) { tc.classList.add('hidden'); return; }
+    var conf = s.upConf > s.dnConf ? 1 : s.upConf < s.dnConf ? -1 : 0, slope = s.trendOk ? (s.green > (S.R.g5 || 0) ? 1 : -1) : 0, sc = s.bias + conf;
+    tc.classList.remove('hidden');
+    tc.innerHTML = '4H ' + (s.bias === 1 ? '▲' : s.bias === -1 ? '▼' : '—') + ' · المؤكدات ▲' + s.upConf + ' ▼' + s.dnConf + (s.news ? ' · <span style="color:#ffa94d">' + esc(s.news) + '</span>' : '');
   }
   // ---------------------------------------------------------------- modes
   function setStatus(txt, cls) { var s = $('status'); s.textContent = txt; s.className = 'pill ' + (cls || ''); }
   function startLive() {
     S.mode = 'live'; S.paused = false; S.samples = []; S.round = null; hideAsk(); S.cool = {};
-    // prefill the trail with the last 90 min of 15m candles so the plane has a path behind it
-    var t0 = Date.now() - WINDOW, pre = S.data.m5.length ? S.data.m5 : S.data.m15, pm = S.data.m5.length ? 5 : 15; pre.forEach(function (b) { if (b.t + pm * MIN > t0) barPath(b, pm).forEach(function (q) { if (q.t < Date.now()) S.samples.push(q); }); });
-    $('bMode').textContent = '🔁 ريبلاي'; rebuildMap(); tick(true);
+    var t0 = Date.now() - WINDOW, pre = (S.data.m5 && S.data.m5.length) ? S.data.m5 : LIVE.m15, pm = (S.data.m5 && S.data.m5.length) ? 5 : 15;
+    pre.forEach(function (b) { if (b.t + pm * MIN > t0) barPath(b, pm).forEach(function (q) { if (q.t < Date.now()) S.samples.push(q); }); });
+    $('bMode').textContent = '🔁 ريبلاي'; rebuildMap(true); tick(true);
   }
   function startReplay(reason) {
     var go = function (bars, label) {
       S.mode = 'replay'; S.replaySrc = label; S.round = null; hideAsk(); S.cool = {}; S.paused = false;
       var start = bars.length > 150 ? bars.length - 150 : 0; S.simPath = []; bars.slice(start).forEach(function (b) { S.simPath = S.simPath.concat(barPath(b, 5)); });
       S.samples = S.simPath.filter(function (q) { return q.t < S.simPath[12].t; }); S.simIdx = 12; S.simT = S.simPath[12].t; S.price = S.disp = S.simPath[12].p;
-      $('bMode').textContent = '🟢 مباشر'; setStatus('⏪ ريبلاي' + (reason ? ' · ' + reason : ''), 'replay'); rebuildMap();
+      $('bMode').textContent = '🟢 مباشر'; setStatus('⏪ ريبلاي' + (reason ? ' · ' + reason : ''), 'replay'); rebuildMap(true);
     };
-    bq('5m', 300).then(function (b) { go(b.filter(function (x) { return !x.open; }), 'biquote.io 5m'); }).catch(function () {
-      getStatic().then(function (j) { if (!S.data.h4.length) { S.data.m15 = fromStatic(j.m15); S.data.h1 = fromStatic(j.h1); S.data.h4 = fromStatic(j.h4); } go(fromStatic(j.m5), 'نسخة محفوظة'); });
+    var ready = HIST ? Promise.resolve() : getHist();
+    ready.then(function () { return bq('5m', 300); }).then(function (b) { go(b.filter(function (x) { return !x.open; }), 'biquote.io 5m'); }).catch(function () {
+      getStatic().then(function (j) { go(fromStatic(j.m5), 'نسخة محفوظة'); });
     });
   }
-  function barPath(b, mins) { // o -> nearer extreme -> other extreme -> c, spread over the bar duration
-    var dur = mins * MIN, hiFirst = Math.abs(b.h - b.o) < Math.abs(b.o - b.l);
-    var a = hiFirst ? b.h : b.l, z = hiFirst ? b.l : b.h;
-    return [{ t: b.t, p: b.o }, { t: b.t + dur * 0.3, p: a }, { t: b.t + dur * 0.7, p: z }, { t: b.t + dur * 0.98, p: b.c }];
-  }
-  // ---------------------------------------------------------------- live loop
+  function barPath(b, mins) { var dur = mins * MIN, hiFirst = Math.abs(b.h - b.o) < Math.abs(b.o - b.l), a = hiFirst ? b.h : b.l, z = hiFirst ? b.l : b.h;
+    return [{ t: b.t, p: b.o }, { t: b.t + dur * 0.3, p: a }, { t: b.t + dur * 0.7, p: z }, { t: b.t + dur * 0.98, p: b.c }]; }
   var tickBusy = false;
   function tick(first) {
     if (S.mode !== 'live' || tickBusy) return; tickBusy = true;
     pollPrice().then(function (r) {
-      var firstP = S.price == null; S.liveOk = true; S.src = r.src; S.price = r.p; if (firstP) rebuildMap(); if (S.disp == null) S.disp = r.p; S.lastTick = Date.now();
-      S.samples.push({ t: Date.now(), p: r.p });
-      S.closed = r.age > 20 * MIN;
+      var firstP = S.price == null; S.liveOk = true; S.src = r.src; S.price = r.p; if (S.disp == null) S.disp = r.p; S.lastTick = Date.now();
+      if (firstP) buildLevels(); S.samples.push({ t: Date.now(), p: r.p }); S.closed = r.age > 20 * MIN;
       if (S.closed) { setStatus('🌙 السوق مغلق', 'err'); if (first) { toast('السوق مغلق هلق 🌙<br><small>عم شغّل ريبلاي لآخر شموع حقيقية</small>'); startReplay('السوق مغلق'); } }
       else setStatus('🟢 مباشر · ' + r.src, 'live');
       if (S.mode === 'live') checkLevels(r.p, Date.now());
@@ -86,42 +104,64 @@
   }
   // ---------------------------------------------------------------- game rules
   function near() { return Math.max(1, +save.near || 3); }
-  function thresholds() { var a = (S.ctx && MO.atr(S.ctx.m15.filter(function (b) { return !b.open; }))) || 6; return { brk: Math.max(2, 0.25 * a), bnc: near() + Math.max(3, 0.4 * a) }; }
+  function thresholds() { var s = S.R && S.R.snap, a15 = (s && s.atr) || 6, a4 = (s && s.atr4) || 30;
+    return { brk: Math.max(2, 0.3 * a15), bnc: Math.min(15, Math.max(near() + 3, 0.35 * a4)) }; } // Pine: break = 0.3 ATR beyond, held = 0.35 x ATR4 away
   function checkLevels(p, t) {
-    if (!S.map) return;
+    if (!S.map || !S.map.levels) return;
     S.map.levels.forEach(function (l) { var k = l.px.toFixed(1); if (S.cool[k] && Math.abs(p - l.px) > near() * 3) delete S.cool[k]; });
     if (S.round) { resolve(p, t); return; }
     if (S.ask) return;
-    var best = null; S.map.levels.forEach(function (l) { var d = Math.abs(p - l.px); if (d <= near() && !S.cool[l.px.toFixed(1)] && (!best || d < Math.abs(p - best.px))) best = l; });
+    var best = null; S.map.levels.forEach(function (l) { if (l.watch) return; var d = Math.abs(p - l.px); if (d <= near() && !S.cool[l.px.toFixed(1)] && (!best || d < Math.abs(p - best.px))) best = l; });
     if (best) openAsk(best, p, t);
   }
+  function zonesAt(L, tol) { var s = S.R.snap, o = [];
+    s.bullOB.forEach(function (z) { if (!z.br && L >= z.bot - tol && L <= z.top + tol) o.push('🟩 Flux OB طلب ' + z.bot.toFixed(1) + '–' + z.top.toFixed(1)); });
+    s.bearOB.forEach(function (z) { if (!z.br && L >= z.bot - tol && L <= z.top + tol) o.push('🟥 Flux OB عرض ' + z.bot.toFixed(1) + '–' + z.top.toFixed(1)); });
+    s.fvg.forEach(function (z) { if (L >= z.min - tol && L <= z.max + tol) o.push((z.bull ? '🟩' : '🟥') + ' FVG 15د ' + z.min.toFixed(1) + '–' + z.max.toFixed(1)); });
+    s.zones4.forEach(function (z) { if (L >= z.B - tol && L <= z.T + tol) o.push((z.K > 0 ? '🟩 ' : '🟥 ') + (Math.abs(z.K) === 1 ? 'OB' : 'FVG') + ' 4H ' + z.B.toFixed(1) + '–' + z.T.toFixed(1)); });
+    return o; }
+  // the indicator's lean at this level, from its own reads (level strength/state, 4H bias, confirmations, zones, 🧠 rates)
+  function lean(l, side) {
+    var s = S.R.snap, lv = l.lv, dirB = -side, sc = 0, why = [];
+    if (lv) { if (lv.star) { sc++; why.push('★ مستوى قوي'); } if (lv.nb > 0) { sc++; why.push('ارتد قبل ' + lv.nb + ' مرة'); } if (lv.st === 3) { sc++; why.push('↺ سحب سيولة عنده'); } if (lv.fl) { sc++; why.push('⇅ انقلب دوره'); } if (lv.st === 2) { sc--; why.push('✕ انكسر قبل'); } }
+    if (s.bias === dirB) { sc++; why.push('اتجاه 4H مع الارتداد'); } else if (s.bias === -dirB) { sc--; why.push('اتجاه 4H مع الاختراق'); }
+    var cf = dirB === 1 ? s.upConf - s.dnConf : s.dnConf - s.upConf; if (cf > 0) { sc++; why.push('المؤكدات مع الارتداد'); } else if (cf < 0) { sc--; why.push('المؤكدات مع الاختراق'); }
+    var zt = zonesAt(l.px, (s.atr || 5) * 0.3).filter(function (z) { return dirB === 1 ? z.indexOf('🟩') === 0 : z.indexOf('🟥') === 0; }); if (zt.length) { sc++; why.push('منطقة ' + (dirB === 1 ? 'طلب' : 'عرض') + ' عند الخط'); }
+    if (lv && lv.ln && lv.ln.length) { var rs = lv.ln.map(function (x) { var m = x.match(/(\d+)%/); return m ? +m[1] : 50; }), av = rs.reduce(function (a, b) { return a + b; }, 0) / rs.length; if (av >= 60) { sc++; why.push('🧠 مصادره بتصمد ' + Math.round(av) + '%'); } else if (av <= 40) { sc--; why.push('🧠 مصادره بتنكسر (' + Math.round(av) + '% صمود)'); } }
+    return { pick: sc >= 1 ? 'bounce' : sc <= -1 ? 'break' : null, sc: sc, why: why };
+  }
   function openAsk(l, p, t) {
-    var side = p >= l.px ? 1 : -1; S.ask = { lvl: l, side: side, t0: Date.now(), p0: p };
+    var side = p >= l.px ? 1 : -1; S.ask = { lvl: l, side: side, t0: Date.now(), p0: p, lean: S.R && S.R.snap ? lean(l, side > 0 ? -1 : 1) : { pick: null, why: [] } };
     if (S.mode === 'replay') S.paused = true;
-    $('askTitle').innerHTML = '✈️ الطيارة قرّبت من <span style="color:' + l.color + '">' + esc(l.label) + '</span>';
+    $('askTitle').innerHTML = '✈️ الطيارة قرّبت من <span style="color:' + lvColor(l) + '">' + esc(l.label) + '</span>';
     $('askSub').innerHTML = 'الخط <b dir="ltr">' + l.px.toFixed(2) + '</b> · السعر <b dir="ltr">' + p.toFixed(2) + '</b> ' + (side > 0 ? 'فوق الخط ⬆️' : 'تحت الخط ⬇️') + ' · بفرق <b dir="ltr">' + Math.abs(p - l.px).toFixed(2) + '$</b>';
-    $('aBounce').innerHTML = (side > 0 ? '⬆️' : '⬇️') + ' يرتد';
-    $('aBreak').innerHTML = (side > 0 ? '⬇️' : '⬆️') + ' يخترق';
+    $('aBounce').innerHTML = (side > 0 ? '⬆️' : '⬇️') + ' يرتد'; $('aBreak').innerHTML = (side > 0 ? '⬇️' : '⬆️') + ' يخترق';
     $('askHints').innerHTML = hints(l, side, t).map(function (h) { return '<li>' + h + '</li>'; }).join('');
     $('ask').classList.remove('hidden');
   }
   function hints(l, side, t) {
-    var out = [], c = S.ctx, r = c ? MO.moRead(c.m15, c.h4, side > 0 ? 'BUY' : 'SELL', l.px, t) : null;
-    var stars = l.stars; out.push('⭐'.repeat(Math.min(5, stars)) + ' ' + (l.conf.length ? 'مع الخط: ' + l.conf.map(esc).join(' + ') : 'الخط لحاله، ما في مستوى تاني جنبه'));
-    if (r) {
-      out.push(r.knife ? '⚠️ السعر جاي على الخط بشمعة قوية (سكين) — الاختراق أقوى' : '✅ ما في اندفاع قوي على الخط');
-      out.push(r.pause ? '📦 وقفة ' + r.pause + ' شمعات 15د قرب الخط' : '📦 ما في وقفة قرب الخط');
-      if (r.sweep) out.push('↺ ذيل خرق الخط وكان إغلاق الشمعة جوّا (سحب سيولة) — بيدعم الارتداد');
-      if (r.conf.length) out.push('🧭 من المؤشر عند الخط: ' + r.conf.map(esc).join(' + '));
-    }
-    if (S.sig && S.sig.trend) out.push(S.sig.trend > 0 ? '☁️ الغيمة خضرا: الاتجاه فوق' + (side > 0 ? ' (مع الارتداد)' : ' (مع الاختراق لفوق)') : '☁️ الغيمة حمرا: الاتجاه تحت' + (side < 0 ? ' (مع الارتداد)' : ' (مع الاختراق لتحت)'));
-    var ls = S.sig && S.sig.list[S.sig.list.length - 1]; if (ls && t - ls.t < 8 * H) out.push((ls.side === 'BUY' ? '🟢 آخر إشارة BUY' : '🔴 آخر إشارة SELL') + ' الساعة ' + MO.berlinTime(ls.t) + ' (برلين)');
-    var r8 = S.map && S.map.r80; if (r8 && r8.active) out.push('8️⃣0️⃣ قاعدة 80%: السعر رجع لجوّا منطقة القيمة تبع الأمس، الهدف ' + r8.target.toFixed(2));
+    var out = [], s = S.R && S.R.snap; if (!s) return ['لسا عم حمّل المؤشر…'];
+    var lv = l.lv;
+    if (lv) { out.push((lv.star ? '★ ' : '') + 'القوة ' + lv.C + ' · ' + esc(tagTxt(lv.t)) + (lv.st === 1 ? ' · ✓ ارتد ' + lv.nb : lv.st === 2 ? ' · ✕ انكسر' : lv.st === 3 ? ' · ↺ كسر كاذب = سحب سيولة' : '') + (lv.fl ? ' · ⇅ انقلب دوره' : ''));
+      if (lv.rc != null) out.push('🔁 ردود فعل سابقة عند الخط: ' + lv.rc + (lv.rc >= 3 ? ' (مصداقية عالية)' : lv.rc === 2 ? ' (مصداقية جيدة)' : ''));
+      (lv.ln || []).forEach(function (x) { out.push('🧠 ' + esc(x)); }); }
+    else if (l.parts.length > 1) out.push('⭐ خطوط مع بعض: ' + esc(l.label));
+    zonesAt(l.px, (s.atr || 5) * 0.3).slice(0, 3).forEach(function (z) { out.push(z); });
+    var cu = Object.keys(s.cu).filter(function (k) { return s.cu[k]; }), cd = Object.keys(s.cd).filter(function (k) { return s.cd[k]; });
+    out.push('✅ المؤكدات (آخر 10 شمعات 15د): ▲' + s.upConf + '/8' + (cu.length ? ' (' + cu.join('، ') + ')' : '') + ' · ▼' + s.dnConf + '/8' + (cd.length ? ' (' + cd.join('، ') + ')' : ''));
+    out.push('🧭 اتجاه 4H: ' + (s.bias === 1 ? 'صاعد ▲' : s.bias === -1 ? 'هابط ▼' : 'محايد —') + (s.trendOk ? '' : ' · الغيمة متذبذبة'));
+    if (s.ev && t - s.ev.t < 8 * H) out.push('📣 آخر حدث: ' + esc(s.ev.msg) + (s.evRes === 1 ? ' ✅ وصل الهدف' : s.evRes === -1 ? ' ⊘ انلغى' : ''));
+    if (s.bx && s.bx.st === 1) out.push('📦 السعر واقف ' + s.bx.n + ' شمعات بين ' + s.bx.bot.toFixed(2) + ' و ' + s.bx.top.toFixed(2));
+    else if (s.bx && s.bx.st === 2) out.push((s.bx.dir === 1 ? '🚀 طلعة لفوق' : '🔻 طلعة لتحت') + ' من وقفة · ' + (s.bx.strong ? 'قوية' : 'ضعيفة') + (s.bx.against ? ' · عكس 4H' : '') + (s.bx.failed ? ' · ↺ فشلت' : ''));
+    if (s.y) out.push('📅 ' + esc(s.dShort));
+    if (s.news) out.push('📰 ' + esc(s.news) + ' — المستويات أضعف وقت الخبر');
+    var ls = S.R.sigs[S.R.sigs.length - 1]; if (ls && t - ls.t < 12 * H) out.push((ls.side === 'BUY' ? '🟢 آخر ' : '🔴 آخر ') + ls.side + (ls.plus ? '+' : '') + ' ' + MO.berlinDay(ls.t).slice(5) + ' ' + MO.berlinTime(ls.t + 15 * MIN) + ' (' + ls.conf + '/8)');
+    var ln = S.ask && S.ask.lean; if (ln) out.push('🤖 ميل المؤشر: <b>' + (ln.pick === 'bounce' ? 'يرتد' : ln.pick === 'break' ? 'يخترق' : 'محايد') + '</b>' + (ln.why.length ? ' — ' + ln.why.map(esc).join('، ') : ''));
     return out;
   }
   function answer(pick) {
     if (!S.ask) return; var a = S.ask; hideAsk();
-    S.round = { lvl: a.lvl, side: a.side, pick: pick, t0: nowT(), wall: Date.now(), th: thresholds() };
+    S.round = { lvl: a.lvl, side: a.side, pick: pick, lean: a.lean && a.lean.pick, t0: nowT(), wall: Date.now(), th: thresholds() };
     S.cool[a.lvl.px.toFixed(1)] = 1; S.paused = false;
     toast(pick === 'bounce' ? '↩️ توقعك: يرتد' : '💥 توقعك: يخترق', '', 1100);
   }
@@ -132,11 +172,12 @@
     if (d <= -R.th.brk) res = 'break'; else if (d >= R.th.bnc) res = 'bounce';
     if (!res && t - R.t0 > 60 * MIN) { S.round = null; toast('⌛ ما في نتيجة بعد ساعة — بلا نقاط'); return; }
     if (!res) return;
-    S.round = null; var ok = res === R.pick, pts = 0;
-    if (ok) { pts = 10 + 5 * save.streak + (R.lvl.stars > 2 ? 5 : 0); save.score += pts; save.streak++; save.best = Math.max(save.best, save.streak); } else save.streak = 0;
-    save.hist.unshift({ t: t, mode: S.mode, lvl: R.lvl.label, px: +R.lvl.px.toFixed(2), pick: R.pick, res: res, ok: ok, pts: pts }); save.hist = save.hist.slice(0, 50); store(); renderScore();
-    var y = yOf(R.lvl.px); if (res === 'break') boom(planeX(), y, R.lvl.color); else ring(planeX(), y, R.lvl.color);
-    toast((res === 'break' ? '💥 اخترق!' : '↩️ ارتد!') + '<br>' + (ok ? '✅ صح +' + pts : '❌ غلط'), ok ? 'ok' : 'bad', 1800);
+    S.round = null; var ok = res === R.pick, pts = 0, withMO = ok && R.lean === R.pick;
+    if (ok) { pts = 10 + 5 * save.streak + (withMO ? 5 : 0); save.score += pts; save.streak++; save.best = Math.max(save.best, save.streak); } else save.streak = 0;
+    save.moN = (save.moN || 0) + (R.lean ? 1 : 0); save.moOk = (save.moOk || 0) + (R.lean && R.lean === res ? 1 : 0);
+    save.hist.unshift({ t: t, mode: S.mode, lvl: R.lvl.label, px: +R.lvl.px.toFixed(2), pick: R.pick, res: res, ok: ok, pts: pts, lean: R.lean }); save.hist = save.hist.slice(0, 50); store(); renderScore();
+    var y = yOf(R.lvl.px); if (res === 'break') boom(planeX(), y, lvColor(R.lvl)); else ring(planeX(), y, lvColor(R.lvl));
+    toast((res === 'break' ? '💥 اخترق!' : '↩️ ارتد!') + '<br>' + (ok ? '✅ صح +' + pts + (withMO ? ' <small>(🤝 مع المؤشر +5)</small>' : '') : '❌ غلط') + (R.lean ? '<br><small>المؤشر كان رأيه: ' + (R.lean === 'bounce' ? 'يرتد' : 'يخترق') + (R.lean === res ? ' ✓' : ' ✗') + '</small>' : ''), ok ? 'ok' : 'bad', 2200);
   }
   function renderScore() { $('score').textContent = save.score; $('streak').textContent = save.streak; $('best').textContent = save.best; var n = save.hist.length, k = save.hist.filter(function (h) { return h.ok; }).length; $('acc').textContent = n ? 'دقّتك ' + Math.round(100 * k / n) + '% من ' + n : ''; }
   // ---------------------------------------------------------------- drawing
@@ -174,19 +215,20 @@
       var y = yOf(l.px);
       if (y < TOP - 4) { if (l.px > S.disp && (!above || l.px < above.px)) above = l; return; }
       if (y > Ht - BOT + 4) { if (l.px < S.disp && (!below || l.px > below.px)) below = l; return; }
-      var hot = S.ask && S.ask.lvl === l || S.round && S.round.lvl === l, grok = l.groups.indexOf('grok') >= 0;
-      cx.strokeStyle = l.color; cx.globalAlpha = hot ? 1 : grok ? 0.9 : 0.65; cx.lineWidth = hot ? 3 : grok ? 2 : 1.3;
-      cx.setLineDash(l.groups.indexOf('round') >= 0 && l.groups.length === 1 ? [3, 6] : l.groups.indexOf('prof') >= 0 && !grok ? [8, 5] : []);
-      if (hot) { cx.shadowColor = l.color; cx.shadowBlur = 12 + 6 * Math.sin(now / 150); }
+      var hot = S.ask && S.ask.lvl === l || S.round && S.round.lvl === l, col = lvColor(l);
+      cx.strokeStyle = col; cx.globalAlpha = hot ? 1 : l.watch ? 0.35 : l.star ? 0.95 : 0.7; cx.lineWidth = hot ? 3 : l.star ? 2.2 : 1.4;
+      cx.setLineDash(l.chan ? [10, 5] : l.dash ? [4, 5] : []);
+      if (hot) { cx.shadowColor = col; cx.shadowBlur = 12 + 6 * Math.sin(now / 150); }
       cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); cx.setLineDash([]); cx.shadowBlur = 0; cx.globalAlpha = 1;
-      var txt = l.label + '  ' + l.px.toFixed(2) + (l.stars > 2 ? ' ⭐' : '');
+      var txt = l.label + '  ' + l.px.toFixed(2) + (l.lv && l.lv.st === 1 ? ' ✓' : l.lv && l.lv.st === 2 ? ' ✕' : l.lv && l.lv.st === 3 ? ' ↺' : '');
+      if (txt.length > 46) txt = txt.slice(0, 44) + '…';
       var w = cx.measureText(txt).width + 10; cx.fillStyle = 'rgba(5,14,32,.62)'; rr(W - w - 6, y - 17, w, 15, 5); cx.fill();
-      cx.fillStyle = l.color; cx.fillText(txt, W - 11, y - 4);
+      cx.fillStyle = col; cx.fillText(txt, W - 11, y - 4);
     });
     cx.textBaseline = 'middle';
     [[above, TOP - 14, '▲'], [below, Ht - BOT + 2, '▼']].forEach(function (e) { var l = e[0]; if (!l) return;
       var txt = e[2] + ' ' + l.label + ' ' + l.px.toFixed(2) + ' (' + Math.abs(l.px - S.disp).toFixed(1) + '$)'; var w = cx.measureText(txt).width + 14;
-      cx.fillStyle = 'rgba(5,14,32,.7)'; rr(W / 2 - w / 2, e[1] - 10, w, 20, 10); cx.fill(); cx.fillStyle = l.color; cx.textAlign = 'center'; cx.fillText(txt, W / 2, e[1] + 1); cx.textAlign = 'right'; });
+      cx.fillStyle = 'rgba(5,14,32,.7)'; rr(W / 2 - w / 2, e[1] - 10, w, 20, 10); cx.fill(); cx.fillStyle = lvColor(l); cx.textAlign = 'center'; cx.fillText(txt, W / 2, e[1] + 1); cx.textAlign = 'right'; });
   }
   function rr(x, y, w, h, r) { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); }
   function drawTrail() {
@@ -197,8 +239,8 @@
     cx.strokeStyle = 'rgba(255,255,255,.25)'; cx.lineWidth = 7; path(pts); cx.stroke();
     cx.strokeStyle = g; cx.lineWidth = 3; path(pts); cx.stroke();
     // MO BUY / SELL signals on the path
-    if (S.sig) S.sig.list.forEach(function (s) { if (s.t < t - WINDOW || s.t > t) return; var x = xOf(s.t + 15 * MIN), y = yOf(s.side === 'BUY' ? s.low : s.high) + (s.side === 'BUY' ? 16 : -16);
-      cx.fillStyle = s.side === 'BUY' ? '#22d38a' : '#ff4d6d'; rr(x - 17, y - 9, 34, 18, 6); cx.fill(); cx.fillStyle = s.side === 'BUY' ? '#04210f' : '#fff'; cx.font = '800 10px Arial'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.direction = 'ltr'; cx.fillText(s.side, x, y + 1); });
+    if (S.R) S.R.sigs.forEach(function (s) { if (s.t < t - WINDOW || s.t > t) return; var x = xOf(s.t + 15 * MIN), y = yOf(s.side === 'BUY' ? s.low : s.high) + (s.side === 'BUY' ? 16 : -16);
+      cx.fillStyle = s.side === 'BUY' ? '#22d38a' : '#ff4d6d'; rr(x - 17, y - 9, 34, 18, 6); cx.fill(); cx.fillStyle = s.side === 'BUY' ? '#04210f' : '#fff'; cx.font = '800 10px Arial'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.direction = 'ltr'; cx.fillText(s.side + (s.plus ? '+' : ''), x, y + 1); });
   }
   function path(pts) { cx.beginPath(); var px = null, py = null; pts.forEach(function (q, i) { var x = xOf(q.t), y = yOf(q.p); if (!i) cx.moveTo(x, y); else if (i === pts.length - 1) cx.quadraticCurveTo(px, py, x, y); else cx.quadraticCurveTo(px, py, (px + x) / 2, (py + y) / 2); px = x; py = y; }); }
   function drawPlane(now) {
@@ -239,10 +281,10 @@
       while (S.simIdx < P.length - 1 && P[S.simIdx + 1].t <= S.simT) { S.simIdx++; S.samples.push(P[S.simIdx]); }
       if (S.simIdx >= P.length - 1) { S.paused = true; toast('🏁 خلص الريبلاي<br><small>اضغط 🟢 مباشر أو 🔁 لتعيد</small>', '', 3000); }
       else { var a = P[S.simIdx], b = P[S.simIdx + 1], u = (S.simT - a.t) / (b.t - a.t); S.price = a.p + (b.p - a.p) * Math.min(1, Math.max(0, u)); }
-      if (S.simT - S.mapAt > 5 * MIN) rebuildMap();
+      if (S.simT - S.mapAt > 15 * MIN) rebuildMap(); else if (S.simT - (S.lvAt || 0) > 2 * MIN) { S.lvAt = S.simT; buildLevels(); }
       checkLevels(S.price, S.simT);
     }
-    if (S.mode === 'live' && S.mapAt && Date.now() - S.mapAt > 60e3) rebuildMap();
+    if (S.mode === 'live' && S.mapAt && Date.now() - S.mapAt > 60e3) { S.mapAt = Date.now(); rebuildMap(); }
     if (S.price != null) {
       if (S.disp == null) S.disp = S.price;
       var prev = S.disp; S.disp += (S.price - S.disp) * Math.min(1, dt / (S.mode === 'live' ? 900 : 160));
@@ -267,7 +309,7 @@
   function hud() {
     if (S.disp != null) $('price').textContent = S.disp.toFixed(2);
     var t = nowT(); $('clock').textContent = (S.mode === 'replay' ? '⏪ ' + MO.berlinDay(t).slice(5) + ' ' : '') + MO.berlinTime(t) + ' برلين';
-    var d1 = S.data.d1, ref = d1 && d1.length > 1 ? d1[d1.length - 2].c : null;
+    var d1 = S.data.d1q, ref = d1 && d1.length > 1 ? d1[d1.length - 2].c : null;
     if (S.mode === 'live' && ref && S.price) { var c = S.price - ref; $('chg').innerHTML = '<span class="' + (c >= 0 ? 'ok' : 'bad') + '" dir="ltr">' + (c >= 0 ? '+' : '') + c.toFixed(2) + '</span> اليوم'; }
     else if (S.mode === 'replay') $('chg').textContent = 'ريبلاي: ' + (S.replaySrc || '');
     else $('chg').textContent = 'XAUUSD';
@@ -276,18 +318,22 @@
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function openPanel(html) { $('panelBody').innerHTML = html; $('panel').classList.remove('hidden'); }
   function readPanel() {
-    var m = S.map, s = S.sig; if (!m) return openPanel('<h3>لسا عم حمّل المؤشر…</h3>');
-    var p = S.disp, rows = m.levels.slice().sort(function (a, b) { return Math.abs(a.px - p) - Math.abs(b.px - p); }).slice(0, 14).sort(function (a, b) { return b.px - a.px; });
-    var h = '<h3>🧭 خريطة المستويات (MO Gold Pro)</h3><table>' + rows.map(function (l) { return '<tr><td><span class="dot" style="background:' + l.color + '"></span>' + esc(l.label) + (l.stars > 2 ? ' ⭐' : '') + '</td><td class="n">' + l.px.toFixed(2) + '</td><td class="n ' + (l.px > p ? 'bad' : 'ok') + '">' + (l.px > p ? '+' : '') + (l.px - p).toFixed(1) + '</td></tr>'; }).join('') + '</table>';
-    var g = m.grok; h += '<h3>📐 قناة 4H Grok</h3><table><tr><td>سقف</td><td class="n">' + g.roof.toFixed(2) + '</td></tr><tr><td>نص</td><td class="n">' + g.mid.toFixed(2) + '</td></tr><tr><td>أرض</td><td class="n">' + g.floor.toFixed(2) + '</td></tr></table>';
-    var dp = m.profile, pr = function (n, x) { return x ? '<tr><td>' + n + '</td><td class="n">VAH ' + x.vah.toFixed(2) + '</td><td class="n">POC ' + x.poc.toFixed(2) + '</td><td class="n">VAL ' + x.val.toFixed(2) + '</td></tr>' : ''; };
-    h += '<h3>📊 البروفايل اليومي (70%)</h3><table>' + pr('اليوم', dp.today) + pr('الأمس', dp.yday) + '</table>';
-    h += '<div class="small">' + (m.r80 ? (m.r80.active ? '8️⃣0️⃣ قاعدة 80% فعّالة: الهدف ' + m.r80.target.toFixed(2) : '8️⃣0️⃣ اليوم فتح برّا منطقة القيمة تبع الأمس (من جهة ' + m.r80.from + ')، بس لسا ما رجع لجوّا') : '8️⃣0️⃣ قاعدة 80% مش فعّالة اليوم') + '</div>';
-    h += '<h3>🚦 إشارات MO على 15د</h3>' + (s ? '<div class="small">☁️ ' + (s.trend > 0 ? 'الغيمة خضرا' : s.trend < 0 ? 'الغيمة حمرا' : '—') + ' · أصفر 1س ' + (s.yellow ? s.yellow.toFixed(2) : '—') + ' · أخضر 4س ' + (s.green ? s.green.toFixed(2) : '—') + ' · VWAP ' + (s.vwap ? s.vwap.toFixed(2) : '—') + (s.trendOk ? '' : ' · تذبذب (فلتر الغيمة موقّف الإشارات)') + '</div>' : '');
-    var sl = s ? s.list.slice(-6).reverse() : [];
-    h += sl.length ? '<table>' + sl.map(function (x) { var at = m.levels.filter(function (l) { return Math.abs((x.side === 'BUY' ? x.low : x.high) - l.px) <= m.tol && l.groups.some(function (g) { return g !== 'round'; }); })[0];
-      return '<tr><td>' + (x.side === 'BUY' ? '🟢 BUY' : '🔴 SELL') + '</td><td class="n">' + MO.berlinDay(x.t).slice(5) + ' ' + MO.berlinTime(x.t + 15 * MIN) + '</td><td class="n">' + x.px.toFixed(2) + '</td><td>' + (at ? '⭐ عند ' + esc(at.name) : '') + '</td></tr>'; }).join('') + '</table>' : '<div class="small">ما في إشارات بآخر يومين.</div>';
-    h += '<div class="small" style="margin-top:10px">الشموع: ' + esc(S.candleSrc || '') + ' · السعر: ' + esc(S.mode === 'live' ? S.src : S.replaySrc || '') + ' · وقت الإشارة = إغلاق الشمعة (برلين)</div>';
+    var R = S.R, s = R && R.snap, m = S.map; if (!s) return openPanel('<h3>لسا عم حمّل المؤشر…</h3>');
+    var p = S.disp || s.close, f = function (x) { return x == null ? '—' : (+x).toFixed(2); };
+    var h = '<h3>🧭 MO Gold Pro · 15د مع خريطة 4H</h3><div class="small">4H ' + (s.bias === 1 ? '▲ صاعد' : s.bias === -1 ? '▼ هابط' : '— محايد') + ' · المؤكدات ▲' + s.upConf + '/8 ▼' + s.dnConf + '/8 · ATR15 ' + f(s.atr) + ' · ATR4H ' + f(s.atr4) + (s.trendOk ? '' : ' · الغيمة متذبذبة (فلتر الغيمة موقّف الإشارات)') + '</div>';
+    h += '<h3>🗺️ الخريطة (أقوى 3 فوق و3 تحت)</h3><table>' + s.map.slice().sort(function (a, b) { return b.p - a.p; }).map(function (l) {
+      return '<tr><td><span class="dot" style="background:' + (l.p > p ? '#ff5c5c' : '#9cff3c') + '"></span>' + (l.star ? '★ ' : '') + esc(tagTxt(l.t)) + '</td><td class="n">' + f(l.p) + '</td><td class="n">' + l.C + '</td><td>' + (l.st === 1 ? '✓ ارتد ' + l.nb : l.st === 2 ? '✕ انكسر' : l.st === 3 ? '↺ سحب' : '') + (l.fl ? ' ⇅' : '') + '</td><td class="n ' + (l.p > p ? 'bad' : 'ok') + '">' + (l.p > p ? '+' : '') + (l.p - p).toFixed(1) + '</td></tr>'; }).join('') + '</table>';
+    if (s.ev) h += '<div class="small">📣 ' + esc(s.ev.msg) + (s.evRes === 1 ? ' ✅ وصل' : s.evRes === -1 ? ' ⊘ انلغى' : ' ⏳') + '</div>';
+    var chs = MOP.chLines(nowT()); h += '<h3>📐 قنواتي</h3><table>' + [0, 1, 2].map(function (c) { var q = chs.slice(c * 3, c * 3 + 3); return '<tr><td>' + esc(q[0].name.split(' ')[0]) + (c === 2 ? (s.c3On ? ' (فعّالة)' : ' (مراقبة)') : '') + '</td>' + q.map(function (x) { return '<td class="n">' + f(x.px) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table><div class="small">سقف · وسط · أرضية — من نقاط الخطوط بالمؤشر</div>';
+    var pr = function (n, x) { return x ? '<tr><td>' + n + '</td><td class="n">VAH ' + f(x.vah) + '</td><td class="n">POC ' + f(x.poc) + '</td><td class="n">VAL ' + f(x.val) + '</td></tr>' : ''; };
+    h += '<h3>📊 البروفايل اليومي (70%)</h3><table>' + pr('اليوم', s.today) + pr('الأمس', s.y) + '</table><div class="small">' + esc(s.dShort || '') + (s.yNaked ? ' · 🧲 POC الأمس ما انلمس' : '') + '</div>';
+    var X = s.X4; h += '<h3>💧 4H</h3><div class="small">سيولة فوق ' + f(X.lh1) + ' / ' + f(X.lh2) + ' · تحت ' + f(X.ll1) + ' / ' + f(X.ll2) + ' · S/R ' + f(X.srH) + ' / ' + f(X.srL) + ' · بروفايل 4H POC ' + f(X.poc) + '</div>';
+    if (s.bx && s.bx.st) h += '<div class="small">📦 ' + (s.bx.st === 1 ? 'وقفة ' + s.bx.n + ' شمعات ' + f(s.bx.bot) + '–' + f(s.bx.top) : (s.bx.dir === 1 ? '🚀 طلعة لفوق' : '🔻 طلعة لتحت') + (s.bx.strong ? ' قوية' : ' ضعيفة')) + '</div>';
+    var sl = R.sigs.slice(-6).reverse();
+    h += '<h3>🚦 إشارات MO (15د)</h3>' + (sl.length ? '<table>' + sl.map(function (x) { return '<tr><td>' + (x.side === 'BUY' ? '🟢 BUY' : '🔴 SELL') + (x.plus ? '+' : '') + '</td><td class="n">' + MO.berlinDay(x.t).slice(5) + ' ' + MO.berlinTime(x.t + 15 * MIN) + '</td><td class="n">' + f(x.px) + '</td><td class="n">' + x.conf + '/8</td><td>' + esc((x.why || []).join('، ')) + '</td></tr>'; }).join('') + '</table>' : '<div class="small">ما في إشارات بالبيانات المحمّلة.</div>');
+    var ev = R.evs.slice(-5).reverse(); if (ev.length) h += '<h3>📣 آخر أحداث المستويات</h3><table>' + ev.map(function (e) { return '<tr><td class="n">' + MO.berlinTime(e.t + 15 * MIN) + '</td><td>' + esc(e.msg) + '</td></tr>'; }).join('') + '</table>';
+    var n = R.stats.C.reduce(function (a, b) { return a + b; }, 0); h += '<div class="small" style="margin-top:8px">🧠 ذاكرة التعلّم: ' + n + ' تجربة من التاريخ المحمّل' + (save.mem ? ' + ذاكرتك الملصوقة' : '') + ' · ميل المؤشر صاب ' + (save.moN ? Math.round(100 * save.moOk / save.moN) + '% من ' + save.moN : '—') + '</div>';
+    h += '<div class="small" style="margin-top:6px">الشموع: ' + esc(S.candleSrc || '') + ' · السعر: ' + esc(S.mode === 'live' ? S.src : S.replaySrc || '') + ' · الوقت = إغلاق الشمعة (برلين)</div>';
     openPanel(h);
   }
   function histPanel() {
@@ -295,13 +341,19 @@
     h += '<div class="row" style="margin-top:12px"><button class="btn g" id="rst">تصفير النقاط</button></div>'; openPanel(h);
     $('rst').onclick = function () { if (confirm('أكيد بدك تصفّر النقاط والسجل؟')) { save.score = save.best = save.streak = 0; save.hist = []; store(); renderScore(); histPanel(); } };
   }
-  var GN = { grok: 'قناة 4H Grok', liq: 'سيولة 4H', sr: 'دعم/مقاومة 4H', ema: 'EMA50 4H', prof: 'VAH/VAL/POC', round: 'أرقام 50', custom: 'مستوياتي' };
+  var GN = GROUPS;
   function setPanel() {
     var h = '<h3>⚙️ الإعدادات</h3><div class="row">السؤال بيطلع لما السعر يقرب <input type="number" id="sNear" step="0.5" min="1" value="' + near() + '" style="max-width:80px"> $ من الخط</div>';
     h += '<h3>الخطوط الظاهرة</h3><div class="row">' + Object.keys(GN).map(function (k) { return '<label class="tg"><input type="checkbox" data-g="' + k + '"' + (save.groups[k] ? ' checked' : '') + '>' + GN[k] + '</label>'; }).join('') + '</div>';
     h += '<h3>مستوياتي (اختياري)</h3><table>' + save.custom.map(function (c, i) { return '<tr><td>' + esc(c.name) + '</td><td class="n">' + (+c.px).toFixed(2) + '</td><td><button class="btn g" data-del="' + i + '">🗑</button></td></tr>'; }).join('') + '</table>';
     h += '<div class="row"><input type="text" id="cName" placeholder="الاسم"><input type="number" id="cPx" step="0.01" placeholder="السعر" dir="ltr"><button class="btn" id="cAdd">➕ أضف</button></div>';
+    h += '<div class="row"><label class="tg"><input type="checkbox" id="sWatch"' + (save.showWatch ? ' checked' : '') + '>اعرض القناة الخضرا (صفراء) وهي بوضع مراقبة</label></div>';
+    h += '<h3>📰 أخبار (متل news.txt بالمؤشر)</h3><textarea id="sNews" rows="3" dir="ltr" style="width:100%" placeholder="2026-11-12 14:30 CPI">' + esc(save.news || '') + '</textarea><div class="small">سطر لكل خبر: التاريخ والوقت بتوقيت برلين + الاسم. أيام الفدرالي محسوبة لحالها.</div>';
+    h += '<h3>🧠 ذاكرة MOMEM1 (اختياري)</h3><textarea id="sMem" rows="2" dir="ltr" style="width:100%" placeholder="MOMEM1|...">' + esc(save.mem || '') + '</textarea>';
+    h += '<div class="row"><button class="btn" id="sSave">💾 احفظ وأعد الحساب</button></div>';
     openPanel(h);
+    $('sWatch').onchange = function () { save.showWatch = this.checked ? 1 : 0; store(); buildLevels(); };
+    $('sSave').onclick = function () { save.news = $('sNews').value; save.mem = $('sMem').value.trim(); store(); rebuildMap(true); toast('✅ انحفظ'); };
     $('sNear').onchange = function () { save.near = Math.max(1, +this.value || 3); store(); };
     [].forEach.call(document.querySelectorAll('[data-g]'), function (el) { el.onchange = function () { save.groups[el.dataset.g] = el.checked ? 1 : 0; store(); rebuildMap(); }; });
     [].forEach.call(document.querySelectorAll('[data-del]'), function (el) { el.onclick = function () { save.custom.splice(+el.dataset.del, 1); store(); rebuildMap(); setPanel(); }; });
